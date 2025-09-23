@@ -1,8 +1,8 @@
 Package: emIRT
 Type: Package
 Title: EM Algorithms for Estimating Item Response Theory Models
-Version: 0.0.14
-Date: 2024-07-05
+Version: 0.0.15
+Date: 2025-09-23
 Authors@R: c(person(given = "Kosuke",
                         family = "Imai",
                         role = c("aut", "cre"),
