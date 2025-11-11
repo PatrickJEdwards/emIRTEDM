@@ -1,6 +1,6 @@
-Package: emIRT
+Package: emIRT_EDM
 Type: Package
-Title: EM Algorithms for Estimating Item Response Theory Models
+Title: EM Algorithms for Estimating Item Response Theory Models (MODIFIED FOR EDMs)
 Version: 0.0.15
 Date: 2025-09-23
 Authors@R: c(person(given = "Kosuke",
