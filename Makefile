@@ -8,20 +8,20 @@ build : attrs clean
 	R CMD Rd2pdf -o doc.pdf .
 
 check : build
-	R CMD check emIRT*.tar.gz
+	R CMD check emIRTEDM*.tar.gz
 
 fullinstall : build
-	R CMD INSTALL emIRT*.tar.gz
+	R CMD INSTALL emIRTEDM*.tar.gz
 
 install : attrs clean
 	R CMD INSTALL .
 
 remove :
-	R CMD REMOVE emIRT
+	R CMD REMOVE emIRTEDM
 
 clean :
-	rm -f emIRT*.tar.gz
-	rm -fr emIRT.Rcheck
+	rm -f emIRTEDM*.tar.gz
+	rm -fr emIRTEDM.Rcheck
 	rm -f ./src/*.o
 	rm -f ./src/*.so
 	rm -f ./src/*.rds

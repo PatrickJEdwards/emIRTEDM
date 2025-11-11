@@ -1,4 +1,4 @@
-Package: emIRT_EDM
+Package: emIRTEDM
 Type: Package
 Title: EM Algorithms for Estimating Item Response Theory Models (MODIFIED FOR EDMs)
 Version: 0.0.15
