@@ -7,6 +7,7 @@
 #endif
 
 #include <RcppArmadillo.h>
+#include <iomanip>
 #include "getEystar_dynIRT.h"
 #include "getLBS_dynIRT.h"
 #include "getNlegis_dynIRT.h"
@@ -22,6 +23,7 @@
 #include "getOnecol_dynIRT.h"
 #include "checkConv_dynIRT.h"
 #include "getP_dynIRT.h"          // NEW: function to update propensity parameters
+
 
 using namespace Rcpp ;
 
@@ -256,22 +258,66 @@ List estimate_dynIRT(arma::mat alpha_start,
 		curEba = getEba_dynIRT(curEa,curEb,curVb2,bill_session,nJ);
 		curEbb = getEbb_dynIRT(curEb,curVb2,bill_session,nJ);
 
-    // Check for Interrupt & Update Progress
-    if (counter % checkfreq == 0) {
-      R_CheckUserInterrupt() ;
-      if (verbose) {
-        Rcout << "Iteration: " << counter << std::endl ;
-      }
-    }
-
-		// Counter>2 allows starts of curEx at 0
-		// CHANGED: include p in convergence once we extend checkConv
-		if(counter > 2)  {
-		  // NEW: checkConv_dynIRT modified to check propensity parameters p for convergence too:
-		  isconv = checkConv_dynIRT(oldEx, curEx, oldEb, curEb, oldEa, curEa, oldEp, curEp, thresh, convtype);
+		
+		
+		
+		// ---- Progress + Convergence (table-style output from new checkConv) ----
+		
+		
+		// Only compute deviations once per iter; also use them for printing
+		bool do_check = (counter > 2);
+		bool do_print = (verbose && (counter % checkfreq == 0));
+		
+		
+		if (do_check || do_print) {
+		  // Returns: list(devEx, devEb, devEa, devEp, check)
+		  Rcpp::List conv = checkConv_dynIRT(
+		    oldEx, curEx, oldEb, curEb, oldEa, curEa, oldEp, curEp, thresh, convtype
+		  );
+		  
+		  double devEx = Rcpp::as<double>(conv["devEx"]);
+		  double devEb = Rcpp::as<double>(conv["devEb"]);
+		  double devEa = Rcpp::as<double>(conv["devEa"]);
+		  double devEp = Rcpp::as<double>(conv["devEp"]);
+		  bool   check = Rcpp::as<bool>(conv["check"]);
+		  
+		  // Nicely aligned progress table
+		  if (do_print) {
+		    static bool header_printed = false;
+		    if (!header_printed) {
+		      Rcout << std::left
+              << std::setw(10) << "Iteration"
+              << std::setw(14) << "Dev. Ex"
+              << std::setw(14) << "Dev. Eb"
+              << std::setw(14) << "Dev. Ea"
+              << std::setw(14) << "Dev. Ep"
+              << "\n";
+		      header_printed = true;
+		    }
+		    Rcout << std::left << std::setw(10) << counter
+            << std::scientific << std::setprecision(3)
+            << std::setw(14) << devEx
+            << std::setw(14) << devEb
+            << std::setw(14) << devEa
+            << std::setw(14) << devEp
+            << std::defaultfloat << "\n";
+		  }
+		  
+		  // Use the logical element of conv_check_output to decide to break
+		  if (do_check && check) {
+		    isconv = 1;    // keep runtime info consistent
+		    break;
+		  }
 		}
-		if (isconv==1) break;
+		
+		
+		// Still respect user interrupts each print interval
+		if (do_print) {
+		  R_CheckUserInterrupt();
+		}
 
+		
+		
 		// Update Old Values If Not Converged
 		oldEx = curEx;
 		oldEb = curEb;

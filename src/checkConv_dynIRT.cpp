@@ -53,9 +53,7 @@ int checkConv_dynIRT(const arma::mat &oldEx,
     devEx = 1 - (cor(oldEx_stripped, curEx_stripped)).min();
     devEb = 1 - (cor(oldEb,          curEb         )).min();
     devEa = 1 - (cor(oldEa,          curEa         )).min();
-    if (!ep_empty) {
-      devEp = 1 - (cor(oldEp_stripped, curEp_stripped)).min(); // NEW
-    }
+    devEp = 1 - (cor(oldEp_stripped, curEp_stripped)).min(); // NEW
   }
   
   if (convtype == 2) {
@@ -68,8 +66,18 @@ int checkConv_dynIRT(const arma::mat &oldEx,
     }
   }
   
-  if( (devEx < thresh) & (devEb < thresh) & (devEa < thresh) & (devEp < thresh)) return(1);
-
-  return(0) ;
+  bool check = (devEx < thresh) & (devEb < thresh) & (devEa < thresh) & (devEp < thresh) ;
+  
+  // Return as an Rcpp list (with names, recommended)
+  return Rcpp::List::create(
+    _["devEx"] = devEx,
+    _["devEb"] = devEb,
+    _["devEa"] = devEa,
+    _["devEp"] = devEp,
+    _["check"] = check
+  );
+  
+  //if( (devEx < thresh) & (devEb < thresh) & (devEa < thresh) & (devEp < thresh)) return(1);
+  //return(0) ;
 
 }
