@@ -20,7 +20,7 @@ dynIRT <- function(.data,
 
     ## Main Call to Computation
     ret <- .Call('dynIRT_estimate',
-                 PACKAGE = 'emIRT',
+                 PACKAGE = 'emIRTEDM',
                  .starts$alpha,
                  .starts$beta,
                  .starts$x,

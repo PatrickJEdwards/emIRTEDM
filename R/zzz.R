@@ -10,5 +10,5 @@
 }
 
 .onUnload <- function(libpath) {
-    library.dynam.unload("emIRT_EDM", libpath)
+    library.dynam.unload("emIRTEDM", libpath)
 }
