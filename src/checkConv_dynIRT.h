@@ -5,7 +5,7 @@
 
 #include <RcppArmadillo.h>
 
-int checkConv_dynIRT(const arma::mat &oldEx,
+Rcpp::List checkConv_dynIRT(const arma::mat &oldEx,
               const arma::mat &curEx,
 			        const arma::mat &oldEb,
               const arma::mat &curEb,
