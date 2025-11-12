@@ -13,11 +13,11 @@ RcppExport SEXP dynIRT_estimate(SEXP alpha_startSEXP,
                                  SEXP TSEXP,
                                  SEXP xmu0SEXP, 
                                  SEXP xsigma0SEXP,
-                                 SEXP pmuSEXP,        // propensity p_{it} prior mean value
-                                 SEXP psigmaSEXP,     // propensity p_{it} prior variance value
                                  SEXP betamuSEXP, 
                                  SEXP betasigmaSEXP, 
                                  SEXP omega2SEXP,
+                                 SEXP pmuSEXP,        // propensity p_{it} prior mean value
+                                 SEXP psigmaSEXP,     // propensity p_{it} prior variance value
                                  SEXP threadsSEXP,
                                  SEXP verboseSEXP,
                                  SEXP maxitSEXP,
