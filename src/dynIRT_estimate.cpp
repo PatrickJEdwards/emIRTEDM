@@ -61,7 +61,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
     Rcpp::traits::input_parameter<int>::type checkfreq(checkfreqSEXP) ;
     
     Rcpp::List result = estimate_dynIRT(m_start, // item motion 'm' start values
-                                 s_start         // item status quo 's' start values
+                                 s_start,         // item status quo 's' start values
                                  //alpha_start,
                                  //beta_start,
                                  x_start,
