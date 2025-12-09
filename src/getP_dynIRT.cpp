@@ -79,7 +79,5 @@ void getP_dynIRT(arma::mat &Ep,                 // N x T (updated)
       Vp(i,t) = var_trunc;
     }
   }
-  
-  // No per-period mean-centering.
   return;
 }

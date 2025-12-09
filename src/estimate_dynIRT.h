@@ -5,8 +5,8 @@
 
 #include <RcppArmadillo.h>
 
-Rcpp::List estimate_dynIRT(arma::mat alpha_start,
-                    arma::mat beta_start,
+Rcpp::List estimate_dynIRT(arma::mat m_start,
+                    arma::mat s_start,
                     arma::mat x_start,
                     arma::mat p_start,     // matrix of propensity starting values
                     arma::mat y,
@@ -14,10 +14,10 @@ Rcpp::List estimate_dynIRT(arma::mat alpha_start,
                     arma::mat endlegis,
                     arma::mat bill_session,
                     unsigned int T,
+                    arma::mat sponsor_index,
                     arma::mat xmu0,
                     arma::mat xsigma0,
-                    arma::mat betamu,
-                    arma::mat betasigma,
+                    arma::mat item_sigma,
                     arma::mat omega2,
                     double pmu = 0.0,             // propensity p_{it} prior mean value
                     double psigma = 1.0,          // propensity p_{it} prior variance value

@@ -6,7 +6,7 @@ using namespace Rcpp;
 
 // // [[Rcpp::export()]]
 void getEx2x2_dynIRT(arma::cube &Ex2x2,
-				   const arma::mat &Ex,
+				           const arma::mat &Ex,
                    const arma::mat &Vx,
                    const arma::mat &legis_by_session,
                    const arma::mat &Nlegis_session,
