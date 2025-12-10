@@ -28,6 +28,9 @@ void getMS_dynIRT(mat& curEm,
                   double ridge)
 {
   // Prior precision (common to all items)
+  if (!item_sigma.is_sympd()) {
+    Rcpp::stop("item_sigma not SPD");
+  }
   mat Lambda = arma::inv_sympd(item_sigma); // 2x2
   
   for (uword j = 0; j < nJ; ++j) {
@@ -157,7 +160,27 @@ void getMS_dynIRT(mat& curEm,
         + Lambda;
         H(0,0) += ridge; H(1,1) += ridge;
         
-        arma::mat Sigma = arma::inv_sympd(H);
+        arma::mat Hs = 0.5 * (H + H.t());               // symmetrize
+        Hs(0,0) += ridge; Hs(1,1) += ridge;
+        
+        // If still not SPD, jitter until it is
+        double jitter = ridge;
+        for (int k = 0; k < 6 && !Hs.is_sympd(); ++k) {
+          jitter *= 10.0;
+          Hs.diag() += jitter;
+        }
+        
+        arma::mat Sigma;
+        if (!Hs.is_sympd()) {
+          Rcpp::Rcout << "H not SPD at item j=" << j << " (t=" << t << ")\n";
+        }
+        if (Hs.is_sympd()) {
+          Sigma = arma::inv_sympd(Hs);
+        } else {
+          // last-resort fallback: stable but not SPD-specific
+          Sigma = arma::inv(Hs + 1e-8 * arma::eye<arma::mat>(2,2));
+        }
+        
         
         // Write back means and (co)variances
         curEm(j,0)  = m;
