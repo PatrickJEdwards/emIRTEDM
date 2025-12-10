@@ -1,7 +1,9 @@
 // -*- mode: C++; c-indent-level: 4; c-basic-offset: 4; tab-width: 4 -*-
 
+#ifndef GETP_DYNIRT_AR1_H
+#define GETP_DYNIRT_AR1_H
+
 #include <RcppArmadillo.h>
-#include "getP_dynIRT_ar1.h"
 #include <cmath>
 using namespace Rcpp; using arma::mat; using arma::uword;
 
@@ -161,3 +163,5 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
     for (int t = t1+1; t < (int)T; ++t) { Ep(ii,t)=0.0; Vp(ii,t)=0.0; }
   } // i
 }
+
+#endif  // GETP_DYNIRT_AR1_H
