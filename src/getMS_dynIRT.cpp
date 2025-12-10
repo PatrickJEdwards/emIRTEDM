@@ -171,9 +171,6 @@ void getMS_dynIRT(mat& curEm,
         }
         
         arma::mat Sigma;
-        if (!Hs.is_sympd()) {
-          Rcpp::Rcout << "H not SPD at item j=" << j << " (t=" << t << ")\n";
-        }
         if (Hs.is_sympd()) {
           Sigma = arma::inv_sympd(Hs);
         } else {
