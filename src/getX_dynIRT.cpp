@@ -4,6 +4,10 @@
 
 using namespace Rcpp;
 
+static inline double clamp(double v, double lo, double hi){
+  return std::min(hi, std::max(lo, v));
+}
+
 // // [[Rcpp::export()]]
 void getX_dynIRT(arma::mat &Ex,
                  arma::mat &Vx,
@@ -19,21 +23,26 @@ void getX_dynIRT(arma::mat &Ex,
                  const int T,
                  const int N,
                  const arma::mat &end_session,  // T×1, end indices per time block in {items j}
-                 const arma::mat &Ep             // NEW: N×T, E[p_{it}]
-                 ) {
+                 const arma::mat &Ep             // N×T, E[p_{it}]
+) {
 
 
 	int i, t;
 
-  // ===== Precomputed per-time aggregates over items =====
+  const double X_MAX = 10.0;     // upper bound for ideal points
+  const double X_MIN = -10.0;    // lower bound for ideal points
+  const double EPS   = 1e-8;     // small numeric floor
+  const double EPSV  = 1e-12;    // min variance
+
+  // ===== Per-time aggregates over items =====
   arma::mat betaDD( T,1,arma::fill::zeros);  // 𝛽̈_t  = sqrt( Σ_j E[β_{jt}^2] )
   arma::mat Eba_sum(T,1,arma::fill::zeros);  // Σ_j E[β_{jt} α_{jt}]
-  arma::mat Eb_sum( T,1,arma::fill::zeros);  // NEW: Σ_j E[β_{jt}]   (needed for − p_{it} * Σ_j E[β_{jt}])
+  arma::mat Eb_sum( T,1,arma::fill::zeros);  // Σ_j E[β_{jt}] (not used in current yDD)
 
   // ===== Per-(i,t) temporary slices =====
   arma::mat Eby_sum, Eb_t, Eystar_t;        // Eby_sum = (Eystar_t * Eb_t) = Σ_j E[y*_{ijt}] E[β_{jt}]
   
-  // ===== Kalman filter/smoother work arrays (per i,t) =====
+  // ===== Kalman work arrays (per i,t) =====
   arma::mat Ot(N,T,arma::fill::zeros);      // Ω_t   (prediction variance for x)
   arma::mat Kt(N,T,arma::fill::zeros);      // K_t   (Kalman gain)
   arma::mat St(N,T,arma::fill::zeros);      // S_t   (innovation variance = 𝛽̈_t^2 Ω_t + 1)
@@ -48,111 +57,99 @@ void getX_dynIRT(arma::mat &Ex,
 	// betaDD and Eba_sum were already used; we add Eb_sum to capture Σ_j E[β_{jt}] so we can subtract p_{it} times this quantity.
 	// These quantities are called repeatedly, calculate and store for reuse
 	//betaDD and yDD correspond to beta.dot.dot and y.dot.dot respectively
-	betaDD(0,0)  = sqrt(accu(Ebb.submat(0,0, end_session(0,0)-1,0)));     // 𝛽̈_0
-	Eba_sum(0,0) =      accu(Eba.submat(0,0, end_session(0,0)-1,0));       // Σ_j E[β α] at t=0
-	Eb_sum(0,0)  =      accu(Eb.submat(0,0,  end_session(0,0)-1,0));       // NEW: Σ_j E[β] at t=0
-	
-	
-	if(T > 1){
+	betaDD(0,0)  = std::sqrt(std::max(0.0, arma::accu(Ebb.submat(0,0, end_session(0,0)-1,0))));
+  Eba_sum(0,0) = arma::accu(Eba.submat(0,0, end_session(0,0)-1,0));
+  Eb_sum(0,0)  = arma::accu(Eb .submat(0,0,  end_session(0,0)-1,0));
+
+  if(T > 1){
     #pragma omp parallel for
-	  for(t = 1; t < T; t++){
-	    betaDD(t,0)  = sqrt( accu(Ebb.submat(end_session(t-1,0),0, end_session(t,0)-1,0)) ); // 𝛽̈_t
-	    Eba_sum(t,0) =       accu(Eba.submat(end_session(t-1,0),0, end_session(t,0)-1,0));   // Σ_j E[β α] at t
-	    Eb_sum(t,0)  =       accu(Eb .submat(end_session(t-1,0),0, end_session(t,0)-1,0));   // NEW: Σ_j E[β] at t
-	  }
-	}
+    for(t = 1; t < T; t++){
+      betaDD(t,0)  = std::sqrt(std::max(0.0, arma::accu(Ebb.submat(end_session(t-1,0),0, end_session(t,0)-1,0))));
+      Eba_sum(t,0) = arma::accu(Eba.submat(end_session(t-1,0),0, end_session(t,0)-1,0));
+      Eb_sum(t,0)  = arma::accu(Eb .submat(end_session(t-1,0),0, end_session(t,0)-1,0));
+    }
+  }
 	
 	
 
 	// ---------- Kalman forward–backward per legislator ----------
   #pragma omp parallel for private(t,Eystar_t,Eb_t,Eby_sum,yDD)
-	for(i=0; i < N; i++){
-		
-		// Initialize first period forward filter using priors. This is first served period t = startlegis(i,0) using prior (c_{i0}, C_{i0})
-		t = startlegis(i,0);
+  for(i=0; i < N; i++){
 
-		if(t==0){
-		  Eystar_t = Eystar.submat(i,0,i,end_session(t,0)-1);
-			Eb_t = Eb.submat(0,0,end_session(t,0)-1,0);
-		}
-		if(t != 0){
-		  Eystar_t = Eystar.submat(i,end_session(t-1,0),i,end_session(t,0)-1);
-		  Eb_t     = Eb.submat(end_session(t-1,0),0,end_session(t,0)-1,0);
-		}
+    // Initialize at first served period t0
+    t = startlegis(i,0);
 
-		// Σ_j E[y*_{ijt}] E[β_{jt}]
-		//Eby_sum = Eystar_t * Eb_t;
-		arma::rowvec ydagger_t = Eystar_t - Ep(i,t);   // broadcast scalar p_it
-		Eby_sum = ydagger_t * Eb_t;                    // scalar
+    if(t==0){
+      Eystar_t = Eystar.submat(i,0,i,end_session(t,0)-1);
+      Eb_t     = Eb    .submat(0,0,end_session(t,0)-1,0);
+    } else {
+      Eystar_t = Eystar.submat(i,end_session(t-1,0),i,end_session(t,0)-1);
+      Eb_t     = Eb    .submat(    end_session(t-1,0),0,end_session(t,0)-1,0);
+    }
+
+    // Σ_j E[y*_{ijt}] E[β_{jt}]
+    arma::rowvec ydagger_t = Eystar_t - Ep(i,t);   // broadcast scalar p_it
+    Eby_sum = ydagger_t * Eb_t;                    // scalar
 		
-		// ====== THE KEY CHANGE (p enters ẏ̈_{it}) ======
-		// Original: ẏ̈_{it} = [ Σ_j E[y*]E[β]  −  Σ_j E[β α] ] / 𝛽̈_t
-		// With propensities: subtract   p_{it} * Σ_j E[β_{jt}]   inside the numerator.
-		// This reflects  Σ_j E[β_{jt}] * (E[y*_{ijt}] − p_{it} − E[α_{jt}]).
-		//yDD = ( Eby_sum(0,0) - Ep(i,t) * Eb_sum(t,0) - Eba_sum(t,0) ) / betaDD(t,0); 
-		yDD     = ( Eby_sum(0,0) - Eba_sum(t,0) ) / betaDD(t,0);
+		// ẏ̈_{it} = [ Σ_j E[y*]E[β]  −  Σ_j E[β α] ] / 𝛽̈_t
+		double denom = std::max(betaDD(t,0), EPS);
+		yDD          = ( Eby_sum(0,0) - Eba_sum(t,0) ) / denom;
 		
 		// ---- Kalman filter update at entry period ----
 		Ot(i,t)    = omega2(i,0) + xsigma0(i,0);                 // Ω_t = ω_i^2 + C_{i0}
 		St(i,t)    = betaDD(t,0)*betaDD(t,0)*Ot(i,t) + 1;        // S_t = 𝛽̈_t^2 Ω_t + 1
-		Kt(i,t)    = betaDD(t,0)*Ot(i,t)/St(i,t);                // K_t = 𝛽̈_t Ω_t / S_t
-		C_var(i,t) = (1 - Kt(i,t)*betaDD(t,0))*Ot(i,t);          // C_t = (I - K_t 𝛽̈_t) Ω_t
-		c_mean(i,t)= xmu0(i,0) + Kt(i,t)*(yDD - betaDD(t,0)*xmu0(i,0)); // c_t = c0 + K_t(ẏ̈ - 𝛽̈_t c0)
-
-		//Forward-filter test only
-		//Vx(i,t) = C_var(i,t);
-		//Ex(i,t) = c_mean(i,t);
-			
-		// If legislator serves only one period
+		Kt(i,t)    = (St(i,t)>EPS)? betaDD(t,0)*Ot(i,t)/St(i,t) : 0.0; // K_t
+		C_var(i,t) = std::max((1 - Kt(i,t)*betaDD(t,0))*Ot(i,t), EPSV); // C_t
+		c_mean(i,t)= xmu0(i,0) + Kt(i,t)*(yDD - betaDD(t,0)*xmu0(i,0)); // c_t (filtered)
+		
+		// Clamp filtered mean at entry
+		c_mean(i,t) = clamp(c_mean(i,t), X_MIN, X_MAX);
+		
+		// If only one served period
 		if(startlegis(i,0) == endlegis(i,0)){
-		  Vx(i,t) = C_var(i,t);                                // Vx = C_t   (smoothed var equals filtered)
-		  Ex(i,t) = c_mean(i,t);                               // Ex = c_t   (smoothed mean equals filtered)
+		  Vx(i,t) = std::max(C_var(i,t), EPSV);
+		  Ex(i,t) = c_mean(i,t);                // already clamped
 		}
 
 		// If legislators in multiple periods (should be most instances)
 		if(startlegis(i,0) != endlegis(i,0)){
-
+		  
 		  // ---- Forward filtering over subsequent served periods ----
-			for(t = startlegis(i,0) + 1; t <= endlegis(i,0); t++){
-
-			  Eystar_t = Eystar.submat(i, end_session(t-1,0), i, end_session(t,0)-1);
-			  Eb_t     = Eb    .submat(    end_session(t-1,0), 0, end_session(t,0)-1, 0);
-			  
-			  //Eby_sum = Eystar_t * Eb_t;                       // Σ_j E[y*]E[β] at time t
-			  arma::rowvec ydagger_t = Eystar_t - Ep(i,t);   // broadcast scalar p_it
-			  Eby_sum = ydagger_t * Eb_t;                    // scalar
-			  
-			  // NEW: again subtract p_{it} Σ_j E[β_{jt}] before dividing by 𝛽̈_t
-			  //yDD = ( Eby_sum(0,0) - Ep(i,t) * Eb_sum(t,0) - Eba_sum(t,0) ) / betaDD(t,0);
-			  yDD     = ( Eby_sum(0,0) - Eba_sum(t,0) ) / betaDD(t,0);
-               
-        Ot(i,t)    = omega2(i,0) + C_var(i,t-1);         // Ω_t = ω_i^2 + C_{t-1}
-        St(i,t)    = betaDD(t,0)*betaDD(t,0)*Ot(i,t) + 1;// S_t = 𝛽̈_t^2 Ω_t + 1
-        Kt(i,t)    = betaDD(t,0)*Ot(i,t)/St(i,t);        // K_t = 𝛽̈_t Ω_t / S_t
-        C_var(i,t) = (1 - Kt(i,t)*betaDD(t,0))*Ot(i,t);  // C_t
-        c_mean(i,t)= c_mean(i,t-1) + Kt(i,t)*(yDD - betaDD(t,0)*c_mean(i,t-1)); // c_t
-
-				//Forward-filter test only
-				//Vx(i,t) = C_var(i,t);
-				//Ex(i,t) = c_mean(i,t);
-
-			}
-
-			// ---- Backward Rauch–Tung–Striebel smoother ---- ... Initialize backward sampling here
-			Vx(i, endlegis(i,0)) = C_var(i,endlegis(i,0));       // final smoothed var
-		  Ex(i, endlegis(i,0)) = c_mean(i,endlegis(i,0));      // final smoothed mean
-
-		  for(t = endlegis(i,0) - 1; t >= startlegis(i,0); t--){
-		    Jt(i,t) = C_var(i,t)/Ot(i,t+1);                  // J_t = C_t * Ω_{t+1}^{-1}
-		    Vx(i,t) = C_var(i,t) + Jt(i,t)*Jt(i,t)*(Vx(i,t+1) - Ot(i,t+1)); // RTS variance
-		    Ex(i,t) = c_mean(i,t) + Jt(i,t)*(Ex(i,t+1) - c_mean(i,t));      // RTS mean
+		  for(t = startlegis(i,0) + 1; t <= endlegis(i,0); t++){
+		    
+		    Eystar_t = Eystar.submat(i, end_session(t-1,0), i, end_session(t,0)-1);
+		    Eb_t     = Eb    .submat(    end_session(t-1,0), 0, end_session(t,0)-1, 0);
+		    
+		    arma::rowvec ydagger_t2 = Eystar_t - Ep(i,t);   // broadcast p_it
+		    Eby_sum = ydagger_t2 * Eb_t;                    // scalar
+		    
+		    denom = std::max(betaDD(t,0), EPS);
+		    yDD   = ( Eby_sum(0,0) - Eba_sum(t,0) ) / denom;
+		    
+		    Ot(i,t)    = omega2(i,0) + C_var(i,t-1);                   // Ω_t
+		    St(i,t)    = betaDD(t,0)*betaDD(t,0)*Ot(i,t) + 1;          // S_t
+		    Kt(i,t)    = (St(i,t)>EPS)? betaDD(t,0)*Ot(i,t)/St(i,t) : 0.0; // K_t
+		    C_var(i,t) = std::max((1 - Kt(i,t)*betaDD(t,0))*Ot(i,t), EPSV);
+		    c_mean(i,t)= c_mean(i,t-1) + Kt(i,t)*(yDD - betaDD(t,0)*c_mean(i,t-1));
+		    
+		    // Clamp filtered mean each step
+		    c_mean(i,t) = clamp(c_mean(i,t), X_MIN, X_MAX);
 		  }
-
-		} //end if(startlegis(i,0) != endlegis(i,0));
-
-		
-	} 	// for(i=0; i < N; i++)
+		  
+		  // ---- Backward Rauch–Tung–Striebel smoother ----
+		  Vx(i, endlegis(i,0)) = std::max(C_var(i,endlegis(i,0)), EPSV);
+		  Ex(i, endlegis(i,0)) = clamp(c_mean(i,endlegis(i,0)), X_MIN, X_MAX);
+		  
+		  for(t = endlegis(i,0) - 1; t >= startlegis(i,0); t--){
+		    Jt(i,t) = (Ot(i,t+1)>EPS)? (C_var(i,t)/Ot(i,t+1)) : 0.0;   // J_t
+		    Vx(i,t) = std::max(C_var(i,t) + Jt(i,t)*Jt(i,t)*(Vx(i,t+1) - Ot(i,t+1)), EPSV);
+		    Ex(i,t) = c_mean(i,t) + Jt(i,t)*(Ex(i,t+1) - c_mean(i,t));
+		    
+		    // Clamp smoothed mean; keep variance positive
+		    Ex(i,t) = clamp(Ex(i,t), X_MIN, X_MAX);
+		  }
+		} // multi-period
+  } 	// for i
 
 	return;
-
 }
