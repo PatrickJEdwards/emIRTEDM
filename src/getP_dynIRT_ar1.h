@@ -16,7 +16,7 @@
 //   startlegis,endlegis : N x 1
 //   rho_p         : AR(1) coefficient in (-1,1). Use 1.0 for random walk.
 //   sig2_p        : N x 1 innovation variance per legislator (Q_i). Use a scalar if you prefer.
-//   pmu0, psig20  : N x 1 prior mean/var for p at first served period (often 0 and large).
+//   pmu0, psigma0  : N x 1 prior mean/var for p at first served period (often 0 and large).
 //   T, N, J       : sizes
 void getP_dynIRT_ar1(arma::mat &Ep,
                      arma::mat &Vp,
@@ -30,7 +30,7 @@ void getP_dynIRT_ar1(arma::mat &Ep,
                      const double      rho_p,
                      const arma::mat  &sig2_p,   // N x 1
                      const arma::mat  &pmu0,     // N x 1
-                     const arma::mat  &psig20,   // N x 1
+                     const arma::mat  &psigma0,   // N x 1
                      const unsigned int T,
                      const unsigned int N,
                      const unsigned int J);

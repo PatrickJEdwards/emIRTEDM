@@ -308,7 +308,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 		
 		// 5) propensity (non-dynamic i.i.d. Normal prior) — unchanged
 		//getP_dynIRT(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, pmu, psigma, T, nN, nJ);
-		getP_dynIRT_ar1(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, rho_p, sig2_p, pmu0, psig20, T, nN, nJ);
+		getP_dynIRT_ar1(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, rho_p, sig2_p, pmu0, psigma0, T, nN, nJ);
 	  if (!curEp.is_finite()) Rcpp::stop("Ep contains non-finite values after getP_dynIRT");
 	  
 	

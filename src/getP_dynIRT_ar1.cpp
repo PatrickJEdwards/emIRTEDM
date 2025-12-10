@@ -18,7 +18,7 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
                      const double rho_p,
                      const mat &sig2_p,
                      const mat &pmu0,
-                     const mat &psig20,
+                     const mat &psigma0,
                      const unsigned int T,
                      const unsigned int N,
                      const unsigned int J)
@@ -89,7 +89,7 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
       
       double Q   = sig2_p(ii,0);
       double c_pred = pmu0(ii,0);           // mean 0 prior at entry (you can shift if you like)
-      double C_pred = psig20(ii,0);
+      double C_pred = psigma0(ii,0);
       
       double S    = Gt*Gt*C_pred + 1.0;
       double K    = (S>0.0) ? (Gt*C_pred / S) : 0.0;
