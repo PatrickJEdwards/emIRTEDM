@@ -19,8 +19,10 @@ Rcpp::List estimate_dynIRT(arma::mat m_start,
                     arma::mat xsigma0,
                     arma::mat item_sigma,
                     arma::mat omega2,
-                    double pmu = 0.0,             // propensity p_{it} prior mean value
-                    double psigma = 1.0,          // propensity p_{it} prior variance value
+                    double rho_p,              // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
+                    arma::mat sig2_p,          // N x 1 innovation variance for propensity per legislator
+                    arma::mat pmu0,            // N x 1 prior mean for p at first served period (often 0 and large).
+                    arma::mat psigma0,         // N x 1 prior var for p at first served period (often 0 and large).
                     unsigned int threads = 1,
                     bool verbose = true,
                     unsigned int maxit = 2500,
