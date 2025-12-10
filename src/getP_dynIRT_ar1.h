@@ -34,3 +34,5 @@ void getP_dynIRT_ar1(arma::mat &Ep,
                      const unsigned int T,
                      const unsigned int N,
                      const unsigned int J);
+
+#endif  // GETP_DYNIRT_AR1_H
