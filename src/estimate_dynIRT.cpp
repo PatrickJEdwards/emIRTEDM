@@ -162,37 +162,33 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 
 	// Initialize derived alpha/beta and their moments from (m,s)
 	for (j=0; j<nJ; ++j) {
-	  double m = curEm(j,0), s = curEs(j,0);
-	  curEb(j,0) = 2.0*(m - s);
-	  curEa(j,0) = s*s - m*m;
+	  const double m0 = curEm(j,0);
+	  const double s0 = curEs(j,0);
+	  curEb(j,0) = 2.0*(m0 - s0);
+	  curEa(j,0) = s0*s0 - m0*m0;
 	  
 	  // Use prior Var(m,s) to seed E[β^2] and E[β·α]
 	  const double vm0  = item_sigma(0,0);
 	  const double vs0  = item_sigma(1,1);
 	  const double cms0 = item_sigma(0,1);
 	  
-	  const double m = curEm(j,0);
-	  const double s = curEs(j,0);
-	  const double Eb = 2.0*(m - s);
+	  const double Eb = 2.0*(m0 - s0);
 	  
 	  // Var(β) = 4(Var(m)+Var(s) - 2 Cov(m,s))
 	  const double Vb = 4.0 * (vm0 + vs0 - 2.0*cms0);
 	  curEbb(j,0) = Vb + Eb*Eb;
 	  
 	  // E[β·α] for jointly Normal (m,s)
-	  const double Em3  = m*m*m + 3.0*m*vm0;
-	  const double Es3  = s*s*s + 3.0*s*vs0;
-	  const double Ems2 = m*(s*s + vs0) + 2.0*s*cms0;
-	  const double Esm2 = s*(m*m + vm0) + 2.0*m*cms0;
+	  const double Em3  = m0*m0*m0 + 3.0*m0*vm0;
+	  const double Es3  = s0*s0*s0 + 3.0*s0*vs0;
+	  const double Ems2 = m0*(s0*s0 + vs0) + 2.0*s0*cms0;
+	  const double Esm2 = s0*(m0*m0 + vm0) + 2.0*m0*cms0;
 	  curEba(j,0) = 2.0 * (Ems2 - Em3 - Es3 + Esm2);
 	  
-	  // Also seed the ms-variances themselves for later use
+	  // Seed ms-variances
 	  curVm(j,0)  = vm0;
 	  curVs(j,0)  = vs0;
 	  curCms(j,0) = cms0;
-	  
-	  
-	  
 	}
 	
 	// ---- Init "Old" containers to track for convergence ----
