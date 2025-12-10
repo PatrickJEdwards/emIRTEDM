@@ -23,8 +23,6 @@ dynIRT <- function(.data,
                  PACKAGE = 'emIRTEDM',
                  .starts$m,           # item motion 'm' start values
                  .starts$s,           # item status quo 's' start values
-                 #.starts$alpha,
-                 #.starts$beta,
                  .starts$x,
                  .starts$p,           # (N x T) matrix of propensity starting values
                  .data$rc,
@@ -35,13 +33,12 @@ dynIRT <- function(.data,
                  .data$sponsor_index, # J-length vector of EDM sponsors
                  .priors$x.mu0,
                  .priors$x.sigma0,
-                 #.priors$item.mu,
                  .priors$item.sigma,  # Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 
-                 #.priors$beta.mu,
-                 #.priors$beta.sigma,
                  .priors$omega2,
-                 .priors$p.mu,        # (N x T) matrix of propensity prior mean values (Generally just set == 0)
-                 .priors$p.sigma,     # (1 x 1) matrix that sets prior variance number for all propensity parameters (generally just set == 1)
+                 .priors$rho_p,       # AR(1) coefficient in (-1,1). Use 1.0 for random walk.
+                 .priors$sig2_p,      # N x 1 innovation variance for propensity per legislator
+                 .priors$pmu0,        # N x 1 prior mean for p at first served period (often 0 and large).
+                 .priors$psigma0,     # N x 1 prior var for p at first served period (often 0 and large).
                  ifelse(!is.null(.control$threads), .control$threads, default$threads),
                  ifelse(!is.null(.control$verbose), .control$verbose, default$verbose),
                  ifelse(!is.null(.control$maxit), .control$maxit, default$maxit),

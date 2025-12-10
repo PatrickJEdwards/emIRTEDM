@@ -22,8 +22,9 @@
 #include "getX_dynIRT.h"
 #include "getOnecol_dynIRT.h"
 #include "checkConv_dynIRT.h"
-#include "getP_dynIRT.h"          // function to update propensity parameters
-#include "getMS_dynIRT.h"         // updates item m,s
+//#include "getP_dynIRT.h"
+#include "getP_dynIRT_ar1.h"
+#include "getMS_dynIRT.h"
 
 
 using namespace Rcpp ;
@@ -42,8 +43,10 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
                arma::mat xsigma0,         // N x 1
                arma::mat item_sigma,      // 2x2 prior covariance for (m,s)
                arma::mat omega2,          // N x 1 (RW variance for x)
-               double pmu = 0.0,          // propensity p_{it} prior mean value
-               double psigma = 1.0,       // propensity p_{it} prior variance value
+               double rho_p,              // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
+               arma::mat sig2_p,          // N x 1 innovation variance for propensity per legislator
+               arma::mat pmu0,            // N x 1 prior mean for p at first served period (often 0 and large).
+               arma::mat psigma0,         // N x 1 prior var for p at first served period (often 0 and large).
                unsigned int threads = 0,
                bool verbose = true,
                unsigned int maxit = 2500,
@@ -63,7 +66,6 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
   
   
   // Basic checks
-  if (psigma <= 0.0) Rcpp::stop("psigma must be > 0");
   if (x_start.n_rows != nN || x_start.n_cols != T) Rcpp::stop("x_start must be N x T");
   if (p_start.n_rows != nN || p_start.n_cols != T) Rcpp::stop("p_start must be N x T");
   if (m_start.n_rows != nJ || m_start.n_cols != 1) Rcpp::stop("m_start must be J x 1");
@@ -305,8 +307,8 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 		
 		
 		// 5) propensity (non-dynamic i.i.d. Normal prior) — unchanged
-		getP_dynIRT(curEp, curVp, curEystar, curEa, curEb, curEx,
-              bill_session, startlegis, endlegis, pmu, psigma, T, nN, nJ);
+		//getP_dynIRT(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, pmu, psigma, T, nN, nJ);
+		getP_dynIRT_ar1(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, rho_p, sig2_p, pmu0, psig20, T, nN, nJ);
 	  if (!curEp.is_finite()) Rcpp::stop("Ep contains non-finite values after getP_dynIRT");
 	  
 	
