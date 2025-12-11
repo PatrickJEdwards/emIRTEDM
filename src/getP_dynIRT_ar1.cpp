@@ -128,8 +128,10 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
     {
       int t = t0;
       const double betaDD = std::sqrt(std::max(B2(t,0), 1e-8));
-      const double Gt     = (betaDD > 0.0) ? (B1(t,0)/betaDD) : 0.0;
-
+      //const double Gt     = (betaDD > 0.0) ? (   B1(t,0) / betaDD ) : 0.0;  // OLD, apparently missing neg. sign
+      const double Gt     = (betaDD > 0.0) ? ( - B1(t,0) / betaDD ) : 0.0;
+      
+      
       // collapsed measurement for p:
       // ypp = [ Σ E[y*]E[β] − Ex*Σ Eβ^2 − Σ Eβα ] / betaDD
       double EyEb = 0.0;
@@ -164,8 +166,8 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
     // remaining served periods
     for (int t = t0+1; t <= t1; ++t) {
       const double betaDD = std::sqrt(std::max(B2(t,0), 1e-8));
-      const double Gt     = (betaDD > 0.0) ? (B1(t,0)/betaDD) : 0.0;
-
+      // const double Gt     = (betaDD > 0.0) ? (   B1(t,0) / betaDD ) : 0.0; // OLD, apparently missing neg. sign
+      const double Gt     = (betaDD > 0.0) ? ( - B1(t,0) / betaDD ) : 0.0;
       double EyEb = 0.0;
       for (uword j = 0; j < J; ++j)
         if ((int)bill_session(j,0) == t) EyEb += Eystar(ii,j) * beta(j,0);
