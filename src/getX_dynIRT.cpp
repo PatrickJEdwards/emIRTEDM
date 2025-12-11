@@ -93,8 +93,8 @@ void getX_dynIRT(arma::mat &Ex,
 		
 		// ẏ̈_{it} = [ Σ_j E[y*]E[β]  −  Σ_j E[β α] ] / 𝛽̈_t
 		double denom = std::max(betaDD(t,0), EPS);
-		//yDD          = ( Eby_sum(0,0)                         - Eba_sum(t,0) ) / denom;  // Missing propensity term
-		yDD            = ( Eby_sum(0,0) - Ep(i,t) * Eb_sum(t,0) - Eba_sum(t,0) ) / denom;
+		yDD = ( Eby_sum(0,0)                         - Eba_sum(t,0) ) / denom;  // CORRECT APPROACH
+		//yDD = ( Eby_sum(0,0) - Ep(i,t) * Eb_sum(t,0) - Eba_sum(t,0) ) / denom;
 		
 		// ---- Kalman filter update at entry period ----
 		Ot(i,t)    = omega2(i,0) + xsigma0(i,0);                 // Ω_t = ω_i^2 + C_{i0}
@@ -125,8 +125,8 @@ void getX_dynIRT(arma::mat &Ex,
 		    Eby_sum = ydagger_t2 * Eb_t;                    // scalar
 		    
 		    denom = std::max(betaDD(t,0), EPS);
-		    //yDD   = ( Eby_sum(0,0)                         - Eba_sum(t,0) ) / denom; // Missing propensity term
-		    yDD   = ( Eby_sum(0,0) - Ep(i,t) * Eb_sum(t,0) - Eba_sum(t,0) ) / denom;
+		    yDD   = ( Eby_sum(0,0)                         - Eba_sum(t,0) ) / denom; // CORRECT APPROACH
+		    //yDD   = ( Eby_sum(0,0) - Ep(i,t) * Eb_sum(t,0) - Eba_sum(t,0) ) / denom;
 		    
 		    Ot(i,t)    = omega2(i,0) + C_var(i,t-1);                   // Ω_t
 		    St(i,t)    = betaDD(t,0)*betaDD(t,0)*Ot(i,t) + 1;          // S_t
