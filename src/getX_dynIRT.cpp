@@ -70,10 +70,11 @@ void getX_dynIRT(arma::mat &Ex,
 
 	int i, t;
 
-  const double X_MIN = -10.0;    // lower bound for ideal points
-  const double X_MAX =  10.0;     // upper bound for ideal points
-  const double EPS   =  1e-8;     // small numeric floor
-  const double EPSV  = 1e-12;    // min variance
+  const double X_MIN =   -10.0;  // lower bound for ideal points
+  const double X_MAX =    10.0;  // upper bound for ideal points
+  const double EPS   =    1e-8;  // small numeric floor
+  const double EPSV  =    1e-12; // min variance
+  const double BETA_EPS = 1e-3;  // treat betaDD≈0 as no information
 
   // ===== Per-time aggregates over items =====
   arma::mat betaDD( T,1,arma::fill::zeros);  // sqrt( Σ_j E[β_{jt}^2] )
@@ -139,18 +140,33 @@ void getX_dynIRT(arma::mat &Ex,
 	  
 		// ---- Kalman filter update at entry period ----
 		Ot(i,t)    = omega2(i,0) + xsigma0(i,0);                 // Ω_t = ω_i^2 + C_{i0}
-		St(i,t)    = betaDD(t,0)*betaDD(t,0)*Ot(i,t) + 1;        // S_t = 𝛽̈_t^2 Ω_t + 1
-		Kt(i,t)    = (St(i,t)>EPS)? betaDD(t,0)*Ot(i,t)/St(i,t) : 0.0; // K_t
-		C_var(i,t) = std::max((1 - Kt(i,t)*betaDD(t,0))*Ot(i,t), EPSV); // C_t
-		c_mean(i,t)= xmu0(i,0) + Kt(i,t)*(yDD - betaDD(t,0)*xmu0(i,0)); // c_t (filtered)
 		
-		// **Soft truncation** of filtered posterior at entry
-		{
+		// Propagate-only when betaDD is tiny (no measurement info)
+		if (betaDD(t,0) < BETA_EPS) {
+		  Kt(i,t)    = 0.0;
+		  St(i,t)    = 1.0;                  // arbitrary positive; not used further
+		  C_var(i,t) = std::max(Ot(i,t), EPSV);
+		  c_mean(i,t)= xmu0(i,0);            // prior mean at entry
+		  
+		  auto mv = trunc_box(c_mean(i,t), C_var(i,t), X_MIN, X_MAX);
+		  c_mean(i,t) = mv.first;
+		  C_var(i,t)  = mv.second;
+		} else {
+		  // Measurement update
+		  arma::rowvec ydagger_t = Eystar_t - Ep(i,t);          // subtract p_it once (correct)
+		  double EyEb = arma::as_scalar( ydagger_t * Eb_t );    // Σ_j (E[y*−p] E[β])
+		  double denom = std::max(betaDD(t,0), EPS);
+		  yDD = ( EyEb - Eba_sum(t,0) ) / denom;
+		  
+		  St(i,t)    = betaDD(t,0)*betaDD(t,0)*Ot(i,t) + 1.0;                    // S_t
+		  Kt(i,t)    = (St(i,t)>EPS)? betaDD(t,0)*Ot(i,t)/St(i,t) : 0.0;         // K_t
+		  C_var(i,t) = std::max((1.0 - Kt(i,t)*betaDD(t,0))*Ot(i,t), EPSV);      // C_t
+		  c_mean(i,t)= xmu0(i,0) + Kt(i,t)*(yDD - betaDD(t,0)*xmu0(i,0));        // c_t
+		  
 		  auto mv = trunc_box(c_mean(i,t), C_var(i,t), X_MIN, X_MAX);
 		  c_mean(i,t) = mv.first;
 		  C_var(i,t)  = mv.second;
 		}
-		
 		
 		
 		// If only one served period
@@ -175,15 +191,33 @@ void getX_dynIRT(arma::mat &Ex,
 		    yDD   = ( EyEb - Eba_sum(t,0) ) / denom;
 		    
 		    Ot(i,t)    = omega2(i,0) + C_var(i,t-1);
-		    St(i,t)    = betaDD(t,0)*betaDD(t,0)*Ot(i,t) + 1.0;
-		    Kt(i,t)    = (St(i,t)>EPS)? betaDD(t,0)*Ot(i,t)/St(i,t) : 0.0;
-		    C_var(i,t) = std::max((1.0 - Kt(i,t)*betaDD(t,0))*Ot(i,t), EPSV);
-		    c_mean(i,t)= c_mean(i,t-1) + Kt(i,t)*(yDD - betaDD(t,0)*c_mean(i,t-1));
 		    
-		    // **Soft truncation** of filtered posterior
-		    auto mv = trunc_box(c_mean(i,t), C_var(i,t), X_MIN, X_MAX);
-		    c_mean(i,t) = mv.first;
-		    C_var(i,t)  = mv.second;
+		    // propagate-only when betaDD is tiny (no measurement info)
+		    if (betaDD(t,0) < BETA_EPS) {
+		      Kt(i,t)    = 0.0;
+		      St(i,t)    = 1.0;
+		      C_var(i,t) = std::max(Ot(i,t), EPSV);
+		      c_mean(i,t)= c_mean(i,t-1);     // carry forward prior mean
+		      
+		      auto mv = trunc_box(c_mean(i,t), C_var(i,t), X_MIN, X_MAX);
+		      c_mean(i,t) = mv.first;
+		      C_var(i,t)  = mv.second;
+		    } else {
+		      // Measurement update
+		      arma::rowvec ydagger_t2 = Eystar_t - Ep(i,t);
+		      double EyEb  = arma::as_scalar( ydagger_t2 * Eb_t );
+		      double denom = std::max(betaDD(t,0), EPS);
+		      yDD   = ( EyEb - Eba_sum(t,0) ) / denom;
+		      
+		      St(i,t)    = betaDD(t,0)*betaDD(t,0)*Ot(i,t) + 1.0;
+		      Kt(i,t)    = (St(i,t)>EPS)? betaDD(t,0)*Ot(i,t)/St(i,t) : 0.0;
+		      C_var(i,t) = std::max((1.0 - Kt(i,t)*betaDD(t,0))*Ot(i,t), EPSV);
+		      c_mean(i,t)= c_mean(i,t-1) + Kt(i,t)*(yDD - betaDD(t,0)*c_mean(i,t-1));
+		      
+		      auto mv = trunc_box(c_mean(i,t), C_var(i,t), X_MIN, X_MAX);
+		      c_mean(i,t) = mv.first;
+		      C_var(i,t)  = mv.second;
+		    }
 		  }
 		  
 		  // ---- Backward Rauch–Tung–Striebel smoother ----
