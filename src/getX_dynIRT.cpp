@@ -1,6 +1,8 @@
 // -*- mode: C++; c-indent-level: 4; c-basic-offset: 4; tab-width: 4 -*-
 
 #include <RcppArmadillo.h>
+#include <limits>      // for std::numeric_limits<double>::infinity()
+#include <algorithm>   // for std::min/max
 
 using namespace Rcpp;
 
@@ -21,10 +23,10 @@ static inline std::pair<double,double>
     const double log_Phi_b = R::pnorm(b, 0.0, 1.0, /*lower*/true,  /*log*/true);
     
     // log( Phi(b) - Phi(a) )
-    auto log_diff_exp = [](double log_b, double log_a){
+    auto log_diff_exp = [](double log_b, double log_a) -> double {
       if (log_b < log_a) std::swap(log_b, log_a);
       double x = std::exp(log_a - log_b);
-      if (x >= 1.0) return -INFINITY;
+      if (x >= 1.0) return -std::numeric_limits<double>::infinity();
       return log_b + std::log1p(-x);
     };
     double logZ = log_diff_exp(log_Phi_b, log_Phi_a);
