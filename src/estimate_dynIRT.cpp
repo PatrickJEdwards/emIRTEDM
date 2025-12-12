@@ -235,7 +235,8 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 		
 		
 		// 1) E[y*] (uses alpha,beta,p,x)
-		getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y, bill_session, startlegis, endlegis,  nN, nJ);
+		getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y, 
+                   bill_session, startlegis, endlegis,  nN, nJ);
 	  if (!curEystar.is_finite()) Rcpp::stop("Eystar contains non-finite values after getEystar_dynIRT");
 	  
 	  
@@ -253,14 +254,6 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	  // 3) (m,s) item update  — REPLACES getEx2x2/getVb2/getEb2
 	  //    New function will update curEm,curEs and their posterior variances/covariances per item,
 	  //    using: E[y*] - E[p] as the response and (E[x], Var[x]) as regressors, plus the sponsor prior.
-	  //
-	  //    Signature (to implement next):
-	  //    getMS_dynIRT(curEm, curEs, curVm, curVs, curCms,
-	  //                 curEystar, curEx, curEp,
-	  //                 bill_session, sponsor_index,
-	  //                 item_sigma,   // 2x2 prior covariance for (m,s) centered at (x_sponsor_t, 0)
-	  //                 nJ, T);
-	  //
 	  getMS_dynIRT(curEm, curEs, curVm, curVs, curCms,
                 curEystar, curEx, curEp,
                 bill_session, sponsor_index,
@@ -284,31 +277,96 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	    
 	    // E[alpha] = E[s^2] - E[m^2]
 	    double Em2 = vm + m*m;
-	    double Es2 = vs + s*s;
-	    double Ea  = Es2 - Em2; // equals curEa(j,0) when using current means/vars
+      double Es2 = vs + s*s;
+      (void)Em2; (void)Es2; // kept for clarity
+	    
+	    //double Ea  = Es2 - Em2; // equals curEa(j,0) when using current means/vars
 	    // E[beta*alpha] for jointly Normal (m,s)
 	    double Em3 = m*m*m + 3.0*m*vm;
 	    double Es3 = s*s*s + 3.0*s*vs;
 	    double Ems2 = m*(s*s + vs) + 2.0*s*cms;
 	    double Esm2 = s*(m*m + vm) + 2.0*m*cms;
-	    double EbXa = 2.0*(Ems2 - Em3 - Es3 + Esm2);
-	    curEba(j,0) = EbXa;
+	    curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
 	  }
 	  
-    //getVb2_dynIRT(curVb2, curEx2x2, betasigma, T);
-    //getEb2_dynIRT(curEb2, curEystar, curEx, curVb2, bill_session, betamu, betasigma, ones_col, nJ, curEp);
-		//curEa = curEb2.col(0);
-		//curEb = curEb2.col(1);
-		// CHECK: ensure no NA/Inf slipped through 'getEb2_dynIRT(...)':
-		//if (!curEa.is_finite() || !curEb.is_finite()) Rcpp::stop("alpha/beta non-finite after getEb2_dynIRT");
-		//curEba = getEba_dynIRT(curEa,curEb,curVb2,bill_session,nJ);
-		//curEbb = getEbb_dynIRT(curEb,curVb2,bill_session,nJ);
-		
-		
+	  
+	  
+	  // ===== 4.5) PERIOD-WISE SCALE NORMALIZATION (Option #1) =====
+    // Enforce RMS(beta_t) = 1 per period (fixes theta–beta multiplicative non-identification)
+    for (unsigned t = 0; t < T; ++t) {
+      // compute c_t = sqrt( mean_j beta_{jt}^2 ) over items in period t
+      double sum_b2 = 0.0;
+      unsigned cnt  = 0;
+      for (unsigned jj = 0; jj < nJ; ++jj) {
+        if (bill_session(jj,0) == (double)t) {
+          const double b = curEb(jj,0);
+          sum_b2 += b*b;
+          cnt    += 1;
+        }
+      }
+      if (cnt == 0) continue;
+      double rms = std::sqrt(sum_b2 / (double)cnt);
+      // guard: if items are nearly flat, skip normalization
+      const double EPS_CT = 1e-8;
+      if (!(rms > EPS_CT)) continue;
+
+      const double c_t  = rms;         // scale factor
+      const double c2_t = c_t * c_t;
+
+      // Rescale item primitives in period t: (m,s) <- (m,s) / c_t
+      for (unsigned jj = 0; jj < nJ; ++jj) {
+        if (bill_session(jj,0) == (double)t) {
+          curEm(jj,0)  /= c_t;
+          curEs(jj,0)  /= c_t;
+          // Their posterior variances/covariance scale by 1/c_t^2
+          curVm(jj,0)  /= c2_t;
+          curVs(jj,0)  /= c2_t;
+          curCms(jj,0) /= c2_t;
+        }
+      }
+
+      // Rescale smoothed legislator x at time t: x_{it} <- c_t * x_{it}
+      // and Var(x_{it}) <- c_t^2 * Var(x_{it}). Leave p_{it} alone.
+      for (unsigned ii = 0; ii < nN; ++ii) {
+        if (t >= (unsigned)startlegis(ii,0) && t <= (unsigned)endlegis(ii,0)) {
+          curEx(ii,t) *= c_t;
+          curVx(ii,t) *= c2_t;
+        }
+      }
+    }
+    
+    // After normalization, bring alpha,beta and moments back in sync (now at normalized scale)
+    for(j=0; j<nJ; j++){
+      double m = curEm(j,0), s = curEs(j,0);
+      curEb(j,0) = 2.0*(m - s);
+      curEa(j,0) = s*s - m*m;
+      
+      double vm  = curVm(j,0), vs = curVs(j,0), cms = curCms(j,0);
+      double Eb   = curEb(j,0);
+      double Vb   = 4.0*(vm + vs - 2.0*cms);
+      curEbb(j,0) = Vb + Eb*Eb;
+      
+      double Em3 = m*m*m + 3.0*m*vm;
+      double Es3 = s*s*s + 3.0*s*vs;
+      double Ems2 = m*(s*s + vs) + 2.0*s*cms;
+      double Esm2 = s*(m*m + vm) + 2.0*m*cms;
+      curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
+    }
+    
+    // IMPORTANT: recompute E[y*] so the propensity step sees consistent (alpha,beta,x,p)
+    getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y,
+                     bill_session, startlegis, endlegis,  nN, nJ);
+	  if (!curEystar.is_finite()) Rcpp::stop("Eystar contains non-finite values after rescale");
+	  
+    
+    
+	  
 		
 		// 5) propensity (non-dynamic i.i.d. Normal prior) — unchanged
 		//getP_dynIRT(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, pmu, psigma, T, nN, nJ);
-		getP_dynIRT_ar1(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, rho_p, sig2_p, pmu0, psigma0, T, nN, nJ);
+		getP_dynIRT_ar1(curEp, curVp, curEystar, curEa, curEb, curEx, 
+                  bill_session, startlegis, endlegis, 
+                  rho_p, sig2_p, pmu0, psigma0, T, nN, nJ);
 	  if (!curEp.is_finite()) Rcpp::stop("Ep contains non-finite values after getP_dynIRT");
 	  
 	
