@@ -6,9 +6,51 @@
 using arma::mat; using arma::vec; using arma::uword; using arma::cube;
 
 static inline double sq(double x){ return x*x; }
-static inline double clamp(double v, double lo, double hi){
-  return std::min(hi, std::max(lo, v));
-}
+
+// Softplus + sigmoid for smooth box barrier
+static inline double softplus(double z){ return std::log1p(std::exp(z)); }
+static inline double sigmoid (double z){ return 1.0 / (1.0 + std::exp(-z)); }
+
+// Univariate truncated-Normal moments (soft truncation at write-back)
+static inline std::pair<double,double>
+  trunc_box_scalar(double mu, double var, double L, double U){
+    const double VAR_FLOOR = 1e-12;
+    var = std::max(var, VAR_FLOOR);
+    if (!(U > L)) return { std::min(U,std::max(L,mu)), VAR_FLOOR };
+    
+    const double sd = std::sqrt(var);
+    const double a  = (L - mu)/sd;
+    const double b  = (U - mu)/sd;
+    
+    const double log_phi_a = R::dnorm(a, 0.0, 1.0, /*log*/true);
+    const double log_phi_b = R::dnorm(b, 0.0, 1.0, /*log*/true);
+    const double log_Phi_a = R::pnorm(a, 0.0, 1.0, /*lower*/true,  /*log*/true);
+    const double log_Phi_b = R::pnorm(b, 0.0, 1.0, /*lower*/true,  /*log*/true);
+    
+    auto log_diff_exp = [](double log_b, double log_a){
+      if (log_b < log_a) std::swap(log_b, log_a);
+      double x = std::exp(log_a - log_b);
+      if (x >= 1.0) return -INFINITY;
+      return log_b + std::log1p(-x);
+    };
+    double logZ = log_diff_exp(log_Phi_b, log_Phi_a);
+    if (!std::isfinite(logZ)) return { std::min(U,std::max(L,mu)), VAR_FLOOR };
+    
+    const double r_a = std::exp(log_phi_a - logZ);
+    const double r_b = std::exp(log_phi_b - logZ);
+    
+    const double mean = mu + sd * (r_a - r_b);
+    const double term = (a * r_a - b * r_b);
+    double variance   = var * (1.0 + term - (r_a - r_b)*(r_a - r_b));
+    if (!(variance > 0.0) || !std::isfinite(variance)) variance = VAR_FLOOR;
+    
+    double mean_box = std::min(U, std::max(L, mean));
+    return { mean_box, variance };
+  }
+
+
+
+
 
 void getMS_dynIRT(mat& curEm,
                   mat& curEs,
@@ -31,23 +73,26 @@ void getMS_dynIRT(mat& curEm,
                   double newton_tol,
                   double ridge)
 {
+  
   // Hard box for item primitives
   const double MS_MIN = -10.0;
   const double MS_MAX =  10.0;
-  const double VAR_FLOOR_AT_BOUND = 1e-10;
+  
+  // Smooth barrier strength (tune 1e-3 .. 1e-1; larger = stronger push back)
+  const double LAMBDA_BAR = 1e-2;
+  
 
   // Prior precision (common to all items)
   if (!item_sigma.is_sympd()) {
-    Rcpp::stop("item_sigma must be symmetric positive definite");
+    Rcpp::stop("item_sigma must be SPD");
   }
   mat Lambda = arma::inv_sympd(item_sigma); // 2x2
   
   for (uword j = 0; j < nJ; ++j) {
-    // Period for this item
+    
     int t = static_cast<int>(bill_session(j,0));
     if (t < 0 || t >= static_cast<int>(T)) continue;
     
-    // Shared period stats: S0, Sx, Sx2
     const mat XtXt = curEx2x2.slice((uword)t);
     double S0  = XtXt(0,0);
     double Sx  = XtXt(0,1); // == XtXt(1,0)
@@ -61,10 +106,12 @@ void getMS_dynIRT(mat& curEm,
       double yst = curEystar(i,j);
       double pit = curEp(i,t);
       double xit = curEx(i,t);
-      double r   = yst - pit;   // "de-propensitied" latent utility
+      double r   = yst - pit;
       Sy  += r;
       Syx += r * xit;
     }
+    
+    
     
     // Prior mean for m is sponsor's x at session t; s has mean 0
     int si = static_cast<int>(sponsor_index(j,0)) - 1;  // 1-based -> 0-based
@@ -74,14 +121,14 @@ void getMS_dynIRT(mat& curEm,
     double mu_m = curEx(si, t);
     double mu_s = 0.0;
 
-    // Start at current means (project into box in case starts drifted out)
-    double m = clamp(curEm(j,0), MS_MIN, MS_MAX);
-    double s = clamp(curEs(j,0), MS_MIN, MS_MAX);
+    // Start from current (unconstrained)
+    double m = curEm(j,0);
+    double s = curEs(j,0);
     
     // Newton iterations (projected line search)
     double prev_obj = std::numeric_limits<double>::infinity();
     for (uword it = 0; it < newton_maxit; ++it) {
-      // Transformations at current (m,s)
+      // A,B at current (m,s)
       double A = s*s - m*m;     // alpha
       double B = 2.0*(m - s);   // beta
       
@@ -97,24 +144,61 @@ void getMS_dynIRT(mat& curEm,
       // Objective (up to const)
       arma::vec theta(2); theta(0)=m; theta(1)=s;
       arma::vec mu(2);    mu(0)=mu_m; mu(1)=mu_s;
+      
       double quad = 0.5*( S0*sq(A) + 2.0*Sx*A*B + Sx2*sq(B) - 2.0*Sy*A - 2.0*Syx*B );
       arma::vec diff = theta - mu;
       double prior = 0.5 * arma::as_scalar( diff.t() * Lambda * diff );
-      double obj = quad + prior;
       
-      // Gradient
-      arma::vec grad = 
-          ( S0*A - Sy  + Sx*B ) * gA
-        + ( Sx*A - Syx + Sx2*B ) * gB
-        + Lambda * diff;
+      // Smooth box barrier (softplus outside [MS_MIN, MS_MAX])
+      // Penalty on each dimension: sp(m - MS_MAX) + sp(MS_MIN - m) + same for s
+      double pm_up   = softplus(m - MS_MAX);
+      double pm_low  = softplus(MS_MIN - m);
+      double ps_up   = softplus(s - MS_MAX);
+      double ps_low  = softplus(MS_MIN - s);
+      double pen_val = LAMBDA_BAR * (pm_up + pm_low + ps_up + ps_low);
       
-      // Hessian
+      // Barrier gradients
+      double dpm_up  = LAMBDA_BAR * sigmoid(m - MS_MAX);     // d/dm sp(m-MAX)
+      double dpm_low = -LAMBDA_BAR * sigmoid(MS_MIN - m);    // d/dm sp(MIN-m)
+      double dps_up  = LAMBDA_BAR * sigmoid(s - MS_MAX);     // d/ds sp(s-MAX)
+      double dps_low = -LAMBDA_BAR * sigmoid(MS_MIN - s);    // d/ds sp(MIN-s)
+      
+      // Barrier Hessian (diagonal terms only; cross-terms 0)
+      double ddpm_up  = LAMBDA_BAR * sigmoid(m - MS_MAX) * (1.0 - sigmoid(m - MS_MAX));
+      double ddpm_low = LAMBDA_BAR * sigmoid(MS_MIN - m) * (1.0 - sigmoid(MS_MIN - m));
+      double ddps_up  = LAMBDA_BAR * sigmoid(s - MS_MAX) * (1.0 - sigmoid(s - MS_MAX));
+      double ddps_low = LAMBDA_BAR * sigmoid(MS_MIN - s) * (1.0 - sigmoid(MS_MIN - s));
+      
+      double obj = quad + prior + pen_val;
+      
+      
+      
+      
+      
+      // Main gradient (model) + prior
+      arma::vec grad = ( S0*A - Sy  + Sx*B ) * gA + ( Sx*A - Syx + Sx2*B ) * gB + Lambda * diff;
+      
+      
+      
+      // Add barrier gradient
+      grad(0) += (dpm_up + dpm_low);
+      grad(1) += (dps_up + dps_low);
+      
+      
+      // Hessian (model) + prior
+      arma::mat H_A(2,2,arma::fill::zeros);
+      H_A(0,0) = -2.0; H_A(1,1) =  2.0;
+      
       arma::mat H =
-          S0*( gA*gA.t() + A*H_A )
+        S0*( gA*gA.t() + A*H_A )
         + Sx*( B*H_A + gA*gB.t() + gB*gA.t() )
         + Sx2*( gB*gB.t() )
         - Sy*H_A
         + Lambda;
+      
+      // Add barrier Hessian
+      H(0,0) += (ddpm_up + ddpm_low);
+      H(1,1) += (ddps_up + ddps_low);
       
       // Numerical safety: ridge if needed
       H(0,0) += ridge; H(1,1) += ridge;
@@ -122,25 +206,37 @@ void getMS_dynIRT(mat& curEm,
       // Convergence on gradient norm
       if (arma::norm(grad, 2) < newton_tol) break;
       
+      
+      
+      
       // Newton step + backtracking with projection to box
       arma::vec step = arma::solve(H, grad, arma::solve_opts::fast);
       double step_scale = 1.0;
       double new_m = m, new_s = s, new_obj = obj;
       
-      for (int ls = 0; ls < 10; ++ls) {
+      // Backtracking line search (no hard projection)
+      for (int ls = 0; ls < 12; ++ls) {
+        
         double cand_m = m - step_scale * step(0);
         double cand_s = s - step_scale * step(1);
-        // Project candidate into the hard box
-        cand_m = clamp(cand_m, MS_MIN, MS_MAX);
-        cand_s = clamp(cand_s, MS_MIN, MS_MAX);
         
         double A2 = cand_s*cand_s - cand_m*cand_m;
         double B2 = 2.0*(cand_m - cand_s);
+        
         double quad2 = 0.5*( S0*sq(A2) + 2.0*Sx*A2*B2 + Sx2*sq(B2) - 2.0*Sy*A2 - 2.0*Syx*B2 );
         arma::vec th2(2); th2(0)=cand_m; th2(1)=cand_s;
         arma::vec df2 = th2 - mu;
         double prior2 = 0.5 * arma::as_scalar( df2.t() * Lambda * df2 );
-        double obj2 = quad2 + prior2;
+
+        // barrier at candidate
+        double pm_up2   = softplus(cand_m - MS_MAX);
+        double pm_low2  = softplus(MS_MIN - cand_m);
+        double ps_up2   = softplus(cand_s - MS_MAX);
+        double ps_low2  = softplus(MS_MIN - cand_s);
+        double pen2     = LAMBDA_BAR * (pm_up2 + pm_low2 + ps_up2 + ps_low2);
+        
+        
+        double obj2 = quad2 + prior2 + pen2;
         
         if (obj2 <= obj) { new_m = cand_m; new_s = cand_s; new_obj = obj2; break; }
         step_scale *= 0.5;
@@ -151,55 +247,59 @@ void getMS_dynIRT(mat& curEm,
       prev_obj = new_obj;
     } // Newton
     
-    // Clamp once more post-iteration
-    m = clamp(m, MS_MIN, MS_MAX);
-    s = clamp(s, MS_MIN, MS_MAX);
-    
     // Final Hessian at (m,s) for posterior covariance (interior formula; we’ll keep SPD + tiny floor at boundary)
     double A = s*s - m*m;
     double B = 2.0*(m - s);
+    
     arma::vec gA(2), gB(2);
     gA(0) = -2.0*m;  gA(1) =  2.0*s;
     gB(0) =  2.0;    gB(1) = -2.0;
+    
     arma::mat H_A(2,2,arma::fill::zeros);
     H_A(0,0) = -2.0; H_A(1,1) =  2.0;
     
     arma::mat H =
-        S0*( gA*gA.t() + A*H_A )
+      S0*( gA*gA.t() + A*H_A )
       + Sx*( B*H_A + gA*gB.t() + gB*gA.t() )
       + Sx2*( gB*gB.t() )
       - Sy*H_A
       + Lambda;
-    arma::mat Hs = 0.5 * (H + H.t());
-    Hs(0,0) += ridge; Hs(1,1) += ridge;
+      
+    // Add barrier curvature at solution (keeps Σ stable near box)
+    double ddpm_up  = LAMBDA_BAR * sigmoid(m - MS_MAX) * (1.0 - sigmoid(m - MS_MAX));
+    double ddpm_low = LAMBDA_BAR * sigmoid(MS_MIN - m) * (1.0 - sigmoid(MS_MIN - m));
+    double ddps_up  = LAMBDA_BAR * sigmoid(s - MS_MAX) * (1.0 - sigmoid(s - MS_MAX));
+    double ddps_low = LAMBDA_BAR * sigmoid(MS_MIN - s) * (1.0 - sigmoid(MS_MIN - s));
+    H(0,0) += ddpm_up + ddpm_low + ridge;
+    H(1,1) += ddps_up + ddps_low + ridge;
+      
+      
+    arma::mat Hs = 0.5*(H + H.t());
+    double jitter = ridge;
     
     // SPD guarantee with jitter if needed
-    double jitter = ridge;
-    for (int k = 0; k < 6 && !Hs.is_sympd(); ++k) {
+    for (int k=0; k<6 && !Hs.is_sympd(); ++k){
       jitter *= 10.0;
       Hs.diag() += jitter;
     }
     
+    
     arma::mat Sigma;
-    if (Hs.is_sympd()) {
-      Sigma = arma::inv_sympd(Hs);
-    } else {
-      Sigma = arma::inv(Hs + 1e-8 * arma::eye<arma::mat>(2,2));
-    }
+    if (Hs.is_sympd()) Sigma = arma::inv_sympd(Hs);
+    else               Sigma = arma::inv(Hs + 1e-8 * arma::eye<arma::mat>(2,2));
+    
 
-    // If we’re stuck on a boundary, keep a tiny positive variance to avoid degeneracy downstream
-    bool at_bound = (m <= MS_MIN + 1e-12) || (m >= MS_MAX - 1e-12) ||
-                    (s <= MS_MIN + 1e-12) || (s >= MS_MAX - 1e-12);
-    if (at_bound) {
-      Sigma(0,0) = std::max(Sigma(0,0), VAR_FLOOR_AT_BOUND);
-      Sigma(1,1) = std::max(Sigma(1,1), VAR_FLOOR_AT_BOUND);
-    }
+    // **Soft truncation at write-back (marginals)**
+    auto mv_m = trunc_box_scalar(m, Sigma(0,0), MS_MIN, MS_MAX);
+    auto mv_s = trunc_box_scalar(s, Sigma(1,1), MS_MIN, MS_MAX);
 
     // Write back means and (co)variances
-    curEm(j,0)  = m;
-    curEs(j,0)  = s;
-    curVm(j,0)  = Sigma(0,0);
-    curVs(j,0)  = Sigma(1,1);
-    curCms(j,0) = Sigma(0,1);
+    curEm(j,0)  = mv_m.first;
+    curEs(j,0)  = mv_s.first;
+    
+    // Keep covariance SPD; ensure marginal floors if near boundary
+    curVm(j,0)  = std::max(mv_m.second, 1e-12);
+    curVs(j,0)  = std::max(mv_s.second, 1e-12);
+    curCms(j,0) = Sigma(0,1);  // keep cross-cov as-is (approximation)
   } // j
 }
