@@ -83,8 +83,8 @@ void getMS_dynIRT(mat& curEm,
 {
   
   // Hard box for item primitives
-  const double MS_MIN = -10.0;
-  const double MS_MAX =  10.0;
+  const double MS_MIN = -500.0;
+  const double MS_MAX =  500.0;
   
   // Smooth barrier strength (tune 1e-3 .. 1e-1; larger = stronger push back)
   const double LAMBDA_BAR = 1e-2;

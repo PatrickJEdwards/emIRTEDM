@@ -70,8 +70,8 @@ void getX_dynIRT(arma::mat &Ex,
 
 	int i, t;
 
-  const double X_MIN =   -10.0;  // lower bound for ideal points
-  const double X_MAX =    10.0;  // upper bound for ideal points
+  const double X_MIN =   -500.0;  // lower bound for ideal points
+  const double X_MAX =    500.0;  // upper bound for ideal points
   const double EPS   =    1e-8;  // small numeric floor
   const double EPSV  =    1e-12; // min variance
   const double BETA_EPS = 1e-3;  // treat betaDD≈0 as no information

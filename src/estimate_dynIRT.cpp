@@ -262,6 +262,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
                 nJ, nN, T);
 
 	  // 4) Refresh derived alpha,beta and their moments from updated (m,s)
+    #pragma omp parallel for schedule(static)
 	  for(j=0; j<nJ; j++){
 	    double m = curEm(j,0), s = curEs(j,0);
 	    curEb(j,0) = 2.0*(m - s);
@@ -336,6 +337,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
     }
     
     // After normalization, bring alpha,beta and moments back in sync (now at normalized scale)
+    #pragma omp parallel for schedule(static)
     for(j=0; j<nJ; j++){
       double m = curEm(j,0), s = curEs(j,0);
       curEb(j,0) = 2.0*(m - s);
@@ -354,9 +356,9 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
     }
     
     // IMPORTANT: recompute E[y*] so the propensity step sees consistent (alpha,beta,x,p)
-    getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y,
-                     bill_session, startlegis, endlegis,  nN, nJ);
-	  if (!curEystar.is_finite()) Rcpp::stop("Eystar contains non-finite values after rescale");
+    //getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y,
+    //                 bill_session, startlegis, endlegis,  nN, nJ);
+	  //if (!curEystar.is_finite()) Rcpp::stop("Eystar contains non-finite values after rescale");
 	  
     
     
