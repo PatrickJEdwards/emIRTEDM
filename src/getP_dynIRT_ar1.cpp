@@ -120,8 +120,8 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
     {
       int t = t0;
       const double betaDD = std::sqrt(std::max(B2(t,0), EPS));
-      //const double Gt     = (betaDD > 0.0) ? (   B1(t,0) / betaDD ) : 0.0;  // OLD, apparently missing neg. sign
-      const double Gt     = (betaDD > 0.0) ? ( - B1(t,0) / betaDD ) : 0.0;
+      const double Gt     = (betaDD > 0.0) ? (   B1(t,0) / betaDD ) : 0.0;  // OLD, apparently missing neg. sign
+      //const double Gt     = (betaDD > 0.0) ? ( - B1(t,0) / betaDD ) : 0.0;
       
       
       // collapsed measurement for p:
@@ -154,8 +154,8 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
     for (int t = t0+1; t <= t1; ++t) {
       
       const double betaDD = std::sqrt(std::max(B2(t,0), EPS));
-      const double Gt     = (betaDD > 0.0) ? ( - B1(t,0) / betaDD ) : 0.0;
-      // const double Gt     = (betaDD > 0.0) ? (   B1(t,0) / betaDD ) : 0.0; // OLD, apparently missing neg. sign
+      //const double Gt     = (betaDD > 0.0) ? ( - B1(t,0) / betaDD ) : 0.0;
+      const double Gt     = (betaDD > 0.0) ? (   B1(t,0) / betaDD ) : 0.0; // OLD, apparently missing neg. sign
 
       double EyEb = 0.0;
       for (uword j = 0; j < J; ++j)
