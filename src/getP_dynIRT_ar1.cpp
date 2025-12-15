@@ -165,7 +165,10 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
 
       const double Q   = sig2_p(ii,0);
       const double C_pred = rho_p*rho_p*C(ii,t-1) + Q;
-      const double c_pred = rho_p * c(ii,t-1);
+      
+      // CHANGE: mean-reverting prediction mean (about pmu0(ii,0))
+      const double c_pred= (1.0 - rho_p) * pmu0(ii,0) + rho_p * c(ii,t-1);
+      //const double c_pred = rho_p * c(ii,t-1); // OLD VERSION
 
       St(ii,t)    = Gt*Gt*C_pred + 1.0;
       Kt(ii,t)    = (St(ii,t)>EPS)? (Gt*C_pred / St(ii,t)) : 0.0;
@@ -193,8 +196,14 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
       const double C_pred = rho_p*rho_p*C(ii,t) + sig2_p(ii,0);
       const double Jgain  = (C_pred>0.0) ? (rho_p * C(ii,t) / C_pred) : 0.0;
       
+      // CHANGE: subtract the predicted next mean with mean-reversion
+      const double mean_pred_next = (1.0 - rho_p) * pmu0(ii,0) + rho_p * c(ii,t);
+      
       Vp(ii,t) = std::max(C(ii,t) + Jgain*Jgain * (Vp(ii,t+1) - C_pred), 1e-12);
-      Ep(ii,t) = c(ii,t) + Jgain * (Ep(ii,t+1) - rho_p * c(ii,t));
+      
+      // CHANGE: 
+      Ep(ii,t) = c(ii,t) + Jgain * (Ep(ii,t+1) - mean_pred_next);
+      //Ep(ii,t) = c(ii,t) + Jgain * (Ep(ii,t+1) - rho_p * c(ii,t)); // OLD VERSION
       
       auto mv  = trunc_box(Ep(ii,t), Vp(ii,t), P_MIN, P_MAX);
       Ep(ii,t) = mv.first;
