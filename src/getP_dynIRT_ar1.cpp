@@ -75,7 +75,7 @@ void getP_dynIRT_ar1(mat &Ep, mat &Vp,
 {
   
   // Box constraints for p_it
-  const double P_MIN = -10.0;   // absolute smallest (most negative)
+  const double P_MIN = -5.0;   // absolute smallest (most negative)
   const double P_MAX =  0.0;    // absolute largest
   const double EPS   = 1e-8;
   
