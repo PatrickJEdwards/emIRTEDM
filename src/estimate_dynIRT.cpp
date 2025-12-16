@@ -105,6 +105,18 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
     if (!any) Rcpp::stop("No serving legislators in period t=%u", t);
   }
   
+  
+  
+  
+  // ===== Location normalization controls (period means of theta) =====
+  arma::vec mu_t = arma::zeros<arma::vec>(T);  // smoothed target for period means
+  const double lambda_mu = 0.90;               // closer to 1 => slower drift toward the observed mean
+  const bool   HARD_CENTER = false;            // set true to force mean(theta_t) = 0 every iter
+  const double EPS_LOC = 1e-8;                 // small floor for weights
+  
+  
+  
+  
     
   //// Initial "Current" Containers
   arma::mat curEystar(nN, nJ, arma::fill::zeros);
@@ -291,67 +303,87 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	  
 	  
 	  
-	  // ===== 4.5) PERIOD-WISE SCALE NORMALIZATION (Option #1) =====
-    // Enforce RMS(beta_t) = 1 per period (fixes theta–beta multiplicative non-identification)
-    //for (unsigned t = 0; t < T; ++t) {
-    // // compute c_t = sqrt( mean_j beta_{jt}^2 ) over items in period t
-    // double sum_b2 = 0.0;
-    // unsigned cnt  = 0;
-    // for (unsigned jj = 0; jj < nJ; ++jj) {
-    //   if (bill_session(jj,0) == (double)t) {
-    //     const double b = curEb(jj,0);
-    //     sum_b2 += b*b;
-    //     cnt    += 1;
-    //   }
-    // }
-    // if (cnt == 0) continue;
-    // double rms = std::sqrt(sum_b2 / (double)cnt);
-    // // guard: if items are nearly flat, skip normalization
-    // const double EPS_CT = 1e-8;
-    // if (!(rms > EPS_CT)) continue;
-    //
-    // const double c_t  = rms;         // scale factor
-    // const double c2_t = c_t * c_t;
-    //
-    // // Rescale item primitives in period t: (m,s) <- (m,s) / c_t
-    // for (unsigned jj = 0; jj < nJ; ++jj) {
-    //   if (bill_session(jj,0) == (double)t) {
-    //     curEm(jj,0)  /= c_t;
-    //     curEs(jj,0)  /= c_t;
-    //     // Their posterior variances/covariance scale by 1/c_t^2
-    //     curVm(jj,0)  /= c2_t;
-    //     curVs(jj,0)  /= c2_t;
-    //     curCms(jj,0) /= c2_t;
-    //   }
-    //}
-
-    //// Rescale smoothed legislator x at time t: x_{it} <- c_t * x_{it}
-    //// and Var(x_{it}) <- c_t^2 * Var(x_{it}). Leave p_{it} alone.
-    //for (unsigned ii = 0; ii < nN; ++ii) {
-    //  if (t >= (unsigned)startlegis(ii,0) && t <= (unsigned)endlegis(ii,0)) {
-    //    curEx(ii,t) *= c_t;
-    //    curVx(ii,t) *= c2_t;
-    //  }
-    //}
-    //}
-    
-    // After normalization, bring alpha,beta and moments back in sync (now at normalized scale)
-    //for(j=0; j<nJ; j++){
-    //  double m = curEm(j,0), s = curEs(j,0);
-    // curEb(j,0) = 2.0*(m - s);
-    // curEa(j,0) = s*s - m*m;
-    // 
-    // double vm  = curVm(j,0), vs = curVs(j,0), cms = curCms(j,0);
-    // double Eb   = curEb(j,0);
-    // double Vb   = 4.0*(vm + vs - 2.0*cms);
-    //  curEbb(j,0) = Vb + Eb*Eb;
-    // 
-    //  double Em3 = m*m*m + 3.0*m*vm;
-    //  double Es3 = s*s*s + 3.0*s*vs;
-    //  double Ems2 = m*(s*s + vs) + 2.0*s*cms;
-    //  double Esm2 = s*(m*m + vm) + 2.0*m*cms;
-    //  curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
-    //}
+	  // ===== 4.5) PERIOD-WISE LOCATION NORMALIZATION (no scale change) =====
+	  // Goal: keep period means of theta near a slowly drifting target mu_t,
+	  // or hard-center them to zero. We preserve eta by shifting items (m,s)
+	  // by the same delta_t as thetas in that period.
+	  
+	  arma::vec delta_t(T, arma::fill::zeros);
+	  
+	  // Phase A: compute precision-weighted period means of theta and deltas
+#pragma omp parallel for schedule(static)
+	  for (unsigned t = 0; t < T; ++t) {
+	    double wsum = 0.0, tsum = 0.0;
+	    for (unsigned i = 0; i < nN; ++i) {
+	      if (t >= (unsigned)startlegis(i,0) && t <= (unsigned)endlegis(i,0)) {
+	        double w = 1.0 / std::max(curVx(i,t), EPS_LOC);  // precision weight
+	        tsum += w * curEx(i,t);
+	        wsum += w;
+	      }
+	    }
+	    if (wsum <= 0.0) { delta_t(t) = 0.0; continue; }
+	    
+	    const double mean_theta_t = tsum / wsum;
+	    
+	    double target = 0.0;
+	    if (!HARD_CENTER) {
+	      const double mu_pred = (t == 0) ? 0.0 : mu_t(t-1);
+	      mu_t(t) = lambda_mu * mu_pred + (1.0 - lambda_mu) * mean_theta_t;
+	      target  = mu_t(t);
+	    } // else target stays 0.0
+	    
+	    delta_t(t) = mean_theta_t - target;   // subtract this from θ_it
+	  }
+	  
+	  // Phase B: apply the translations θ_it ← θ_it − delta_t, and
+	  //          m_jt, s_jt ← m_jt − delta_t for items in that period.
+	  //          Variances are unchanged by translation.
+	  
+    #pragma omp parallel for schedule(static)
+	  for (unsigned t = 0; t < T; ++t) {
+	    const double d = delta_t(t);
+	    if (std::abs(d) < 1e-12) continue;
+	    
+	    // Shift legislators in period t
+	    for (unsigned i = 0; i < nN; ++i) {
+	      if (t >= (unsigned)startlegis(i,0) && t <= (unsigned)endlegis(i,0)) {
+	        curEx(i,t) -= d;   // curVx(i,t) unchanged
+	      }
+	    }
+	    
+	    // Shift items that belong to period t
+	    for (unsigned jj = 0; jj < nJ; ++jj) {
+	      if (bill_session(jj,0) == (double)t) {
+	        curEm(jj,0) -= d;
+	        curEs(jj,0) -= d;
+	        // curVm/curVs/curCms unchanged (translation)
+	      }
+	    }
+	  }
+	  
+	  // Phase C: re-sync α, β, and moments after the translation.
+	  // β is unchanged by equal shifts of (m,s), but α changes by β·delta_t;
+	  // recomputing from (m,s) keeps everything consistent.
+	  for (j = 0; j < nJ; ++j) {
+	    double m = curEm(j,0), s = curEs(j,0);
+	    curEb(j,0) = 2.0*(m - s);
+	    curEa(j,0) = s*s - m*m;
+	    
+	    double vm  = curVm(j,0), vs = curVs(j,0), cms = curCms(j,0);
+	    double Eb  = curEb(j,0);
+	    double Vb  = 4.0*(vm + vs - 2.0*cms);
+	    curEbb(j,0) = Vb + Eb*Eb;
+	    
+	    double Em3 = m*m*m + 3.0*m*vm;
+	    double Es3 = s*s*s + 3.0*s*vs;
+	    double Ems2 = m*(s*s + vs) + 2.0*s*cms;
+	    double Esm2 = s*(m*m + vm) + 2.0*m*cms;
+	    curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
+	  }
+	  
+	  // NOTE: No need to recompute E[y*] here. The translation keeps η=α+βθ−p unchanged,
+	  // so the previously computed curEystar remains consistent up to tiny roundoff.
+	  
     
     
 		
