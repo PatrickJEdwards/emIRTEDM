@@ -22,8 +22,8 @@
 #include "getX_dynIRT.h"
 #include "getOnecol_dynIRT.h"
 #include "checkConv_dynIRT.h"
-//#include "getP_dynIRT.h"
-#include "getP_dynIRT_ar1.h"
+#include "getP_dynIRT.h"
+//#include "getP_dynIRT_ar1.h"
 #include "getMS_dynIRT.h"
 
 
@@ -381,9 +381,8 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	  //  curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
 	  //}
 	  //
-	  //// NOTE: No need to recompute E[y*] here. The translation keeps η=α+βθ−p unchanged,
-	  //// so the previously computed curEystar remains consistent up to tiny roundoff.
-	  //
+	  //// Keep E[y*] synchronized with current (alpha, beta, x, p)
+	  ////getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y, bill_session, startlegis, endlegis, nN, nJ);
     
     
 		
