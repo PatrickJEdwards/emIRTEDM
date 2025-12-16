@@ -109,10 +109,10 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
   
   
   // ===== Location normalization controls (period means of theta) =====
-  arma::vec mu_t = arma::zeros<arma::vec>(T);  // smoothed target for period means
-  const double lambda_mu = 0.90;               // closer to 1 => slower drift toward the observed mean
-  const bool   HARD_CENTER = false;            // set true to force mean(theta_t) = 0 every iter
-  const double EPS_LOC = 1e-8;                 // small floor for weights
+  //arma::vec mu_t = arma::zeros<arma::vec>(T);  // smoothed target for period means
+  //const double lambda_mu = 0.90;               // closer to 1 => slower drift toward the observed mean
+  //const bool   HARD_CENTER = false;            // set true to force mean(theta_t) = 0 every iter
+  //const double EPS_LOC = 1e-8;                 // small floor for weights
   
   
   
@@ -303,95 +303,95 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	  
 	  
 	  
-	  // ===== 4.5) PERIOD-WISE LOCATION NORMALIZATION (no scale change) =====
-	  // Goal: keep period means of theta near a slowly drifting target mu_t,
-	  // or hard-center them to zero. We preserve eta by shifting items (m,s)
-	  // by the same delta_t as thetas in that period.
+	  //// ===== 4.5) PERIOD-WISE LOCATION NORMALIZATION (no scale change) =====
+	  //// Goal: keep period means of theta near a slowly drifting target mu_t,
+	  //// or hard-center them to zero. We preserve eta by shifting items (m,s)
+	  //// by the same delta_t as thetas in that period.
+	  //
+	  //arma::vec delta_t(T, arma::fill::zeros);
+	  //
+	  //// Phase A: compute precision-weighted period means of theta and deltas
+    //#pragma omp parallel for schedule(static)
+	  //for (unsigned t = 0; t < T; ++t) {
+	  //  double wsum = 0.0, tsum = 0.0;
+	  //  for (unsigned i = 0; i < nN; ++i) {
+	  //    if (t >= (unsigned)startlegis(i,0) && t <= (unsigned)endlegis(i,0)) {
+	  //      double w = 1.0 / std::max(curVx(i,t), EPS_LOC);  // precision weight
+	  //      tsum += w * curEx(i,t);
+	  //      wsum += w;
+	  //    }
+	  //  }
+	  //  if (wsum <= 0.0) { delta_t(t) = 0.0; continue; }
+	  //  
+	  //  const double mean_theta_t = tsum / wsum;
+	  //  
+	  //  double target = 0.0;
+	  //  if (!HARD_CENTER) {
+	  //    const double mu_pred = (t == 0) ? 0.0 : mu_t(t-1);
+	  //    mu_t(t) = lambda_mu * mu_pred + (1.0 - lambda_mu) * mean_theta_t;
+	  //    target  = mu_t(t);
+	  //  } // else target stays 0.0
+	  //  
+	  //  delta_t(t) = mean_theta_t - target;   // subtract this from θ_it
+	  //}
+	  //
+	  //// Phase B: apply the translations θ_it ← θ_it − delta_t, and
+	  ////          m_jt, s_jt ← m_jt − delta_t for items in that period.
+	  ////          Variances are unchanged by translation.
 	  
-	  arma::vec delta_t(T, arma::fill::zeros);
-	  
-	  // Phase A: compute precision-weighted period means of theta and deltas
-#pragma omp parallel for schedule(static)
-	  for (unsigned t = 0; t < T; ++t) {
-	    double wsum = 0.0, tsum = 0.0;
-	    for (unsigned i = 0; i < nN; ++i) {
-	      if (t >= (unsigned)startlegis(i,0) && t <= (unsigned)endlegis(i,0)) {
-	        double w = 1.0 / std::max(curVx(i,t), EPS_LOC);  // precision weight
-	        tsum += w * curEx(i,t);
-	        wsum += w;
-	      }
-	    }
-	    if (wsum <= 0.0) { delta_t(t) = 0.0; continue; }
-	    
-	    const double mean_theta_t = tsum / wsum;
-	    
-	    double target = 0.0;
-	    if (!HARD_CENTER) {
-	      const double mu_pred = (t == 0) ? 0.0 : mu_t(t-1);
-	      mu_t(t) = lambda_mu * mu_pred + (1.0 - lambda_mu) * mean_theta_t;
-	      target  = mu_t(t);
-	    } // else target stays 0.0
-	    
-	    delta_t(t) = mean_theta_t - target;   // subtract this from θ_it
-	  }
-	  
-	  // Phase B: apply the translations θ_it ← θ_it − delta_t, and
-	  //          m_jt, s_jt ← m_jt − delta_t for items in that period.
-	  //          Variances are unchanged by translation.
-	  
-    #pragma omp parallel for schedule(static)
-	  for (unsigned t = 0; t < T; ++t) {
-	    const double d = delta_t(t);
-	    if (std::abs(d) < 1e-12) continue;
-	    
-	    // Shift legislators in period t
-	    for (unsigned i = 0; i < nN; ++i) {
-	      if (t >= (unsigned)startlegis(i,0) && t <= (unsigned)endlegis(i,0)) {
-	        curEx(i,t) -= d;   // curVx(i,t) unchanged
-	      }
-	    }
-	    
-	    // Shift items that belong to period t
-	    for (unsigned jj = 0; jj < nJ; ++jj) {
-	      if (bill_session(jj,0) == (double)t) {
-	        curEm(jj,0) -= d;
-	        curEs(jj,0) -= d;
-	        // curVm/curVs/curCms unchanged (translation)
-	      }
-	    }
-	  }
-	  
-	  // Phase C: re-sync α, β, and moments after the translation.
-	  // β is unchanged by equal shifts of (m,s), but α changes by β·delta_t;
-	  // recomputing from (m,s) keeps everything consistent.
-	  for (j = 0; j < nJ; ++j) {
-	    double m = curEm(j,0), s = curEs(j,0);
-	    curEb(j,0) = 2.0*(m - s);
-	    curEa(j,0) = s*s - m*m;
-	    
-	    double vm  = curVm(j,0), vs = curVs(j,0), cms = curCms(j,0);
-	    double Eb  = curEb(j,0);
-	    double Vb  = 4.0*(vm + vs - 2.0*cms);
-	    curEbb(j,0) = Vb + Eb*Eb;
-	    
-	    double Em3 = m*m*m + 3.0*m*vm;
-	    double Es3 = s*s*s + 3.0*s*vs;
-	    double Ems2 = m*(s*s + vs) + 2.0*s*cms;
-	    double Esm2 = s*(m*m + vm) + 2.0*m*cms;
-	    curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
-	  }
-	  
-	  // NOTE: No need to recompute E[y*] here. The translation keeps η=α+βθ−p unchanged,
-	  // so the previously computed curEystar remains consistent up to tiny roundoff.
-	  
+	  //#pragma omp parallel for schedule(static)
+	  //for (unsigned t = 0; t < T; ++t) {
+	  //  const double d = delta_t(t);
+	  //  if (std::abs(d) < 1e-12) continue;
+	  //  
+	  //  // Shift legislators in period t
+	  //  for (unsigned i = 0; i < nN; ++i) {
+	  //    if (t >= (unsigned)startlegis(i,0) && t <= (unsigned)endlegis(i,0)) {
+	  //      curEx(i,t) -= d;   // curVx(i,t) unchanged
+	  //    }
+	  //  }
+	  //  
+	  //  // Shift items that belong to period t
+	  //  for (unsigned jj = 0; jj < nJ; ++jj) {
+	  //    if (bill_session(jj,0) == (double)t) {
+	  //      curEm(jj,0) -= d;
+	  //      curEs(jj,0) -= d;
+	  //      // curVm/curVs/curCms unchanged (translation)
+	  //    }
+	  //  }
+	  //}
+	  //
+	  //// Phase C: re-sync α, β, and moments after the translation.
+	  //// β is unchanged by equal shifts of (m,s), but α changes by β·delta_t;
+	  //// recomputing from (m,s) keeps everything consistent.
+	  //for (j = 0; j < nJ; ++j) {
+	  //  double m = curEm(j,0), s = curEs(j,0);
+	  //  curEb(j,0) = 2.0*(m - s);
+	  //  curEa(j,0) = s*s - m*m;
+	  //  
+	  //  double vm  = curVm(j,0), vs = curVs(j,0), cms = curCms(j,0);
+	  //  double Eb  = curEb(j,0);
+	  //  double Vb  = 4.0*(vm + vs - 2.0*cms);
+	  //  curEbb(j,0) = Vb + Eb*Eb;
+	  //  
+	  //  double Em3 = m*m*m + 3.0*m*vm;
+	  //  double Es3 = s*s*s + 3.0*s*vs;
+	  //  double Ems2 = m*(s*s + vs) + 2.0*s*cms;
+	  //  double Esm2 = s*(m*m + vm) + 2.0*m*cms;
+	  //  curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
+	  //}
+	  //
+	  //// NOTE: No need to recompute E[y*] here. The translation keeps η=α+βθ−p unchanged,
+	  //// so the previously computed curEystar remains consistent up to tiny roundoff.
+	  //
     
     
 		
 		// 5) propensity (non-dynamic i.i.d. Normal prior) — unchanged
-		//getP_dynIRT(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, pmu, psigma, T, nN, nJ);
-		getP_dynIRT_ar1(curEp, curVp, curEystar, curEa, curEb, curEx, 
-                  bill_session, startlegis, endlegis, 
-                  rho_p, sig2_p, pmu0, psigma0, T, nN, nJ);
+		double pmu = 0.0;
+	  double psigma = 1.0;
+		getP_dynIRT(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, pmu, psigma, T, nN, nJ);
+		//getP_dynIRT_ar1(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, rho_p, sig2_p, pmu0, psigma0, T, nN, nJ);
 	  if (!curEp.is_finite()) Rcpp::stop("Ep contains non-finite values after getP_dynIRT");
 	  
 	
