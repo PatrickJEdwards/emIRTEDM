@@ -439,7 +439,13 @@ void getMS_dynIRT_anchored(
       double A = s*s - m*m, B = 2.0*(m - s);
       arma::vec gA(2), gB(2);
       gA(0)=-2.0*m; gA(1)= 2.0*s; gB(0)=2.0; gB(1)=-2.0;
-      arma::mat H_A(2,2,arma::fill::zeros); H_A(0,0)=-2.0; H_A(1,1)=2.0;
+      
+      
+      arma::mat H_A(2,2, arma::fill::zeros);
+      H_A(0,0) = -2.0;
+      H_A(1,1) =  2.0;
+      
+      
       arma::mat H =
         S0*( gA*gA.t() + A*H_A )
         + Sx*( B*H_A + gA*gB.t() + gB*gA.t() )
@@ -457,8 +463,13 @@ void getMS_dynIRT_anchored(
         arma::mat Hs = 0.5*(H+H.t());
         double jitter = ridge;
         for (int k=0; k<6 && !Hs.is_sympd(); ++k){ jitter*=10.0; Hs.diag() += jitter; }
-        arma::mat Sigma = Hs.is_sympd() ? arma::inv_sympd(Hs)
-          : arma::inv(Hs + 1e-8 * arma::eye<arma::mat>(2,2));
+        //arma::mat Sigma = Hs.is_sympd() ? arma::inv_sympd(Hs) : arma::inv(Hs + 1e-8 * arma::eye<arma::mat>(2,2));
+        arma::mat Sigma;
+        if (Hs.is_sympd()) {
+          Sigma = arma::inv_sympd(Hs);
+        } else {
+          Sigma = arma::inv(Hs + 1e-8 * arma::eye<arma::mat>(2,2));
+        }
         
         // truncated write-back
         auto mv_m = trunc_box_scalar(m, Sigma(0,0), MS_MIN, MS_MAX);
