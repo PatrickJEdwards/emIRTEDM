@@ -115,6 +115,8 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
       }
     }
   }
+  
+  if (use_groups) Rcout << "Note: using item anchor groups!\n\n";
     
   //// Initial "Current" Containers
   arma::mat curEystar(nN, nJ, arma::fill::zeros);
@@ -265,7 +267,6 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	  //    New function will update curEm,curEs and their posterior variances/covariances per item,
 	  //    using: E[y*] - E[p] as the response and (E[x], Var[x]) as regressors, plus the sponsor prior.
 	  if (use_groups) {
-	    Rcout << "Note: using item anchor groups!\n\n" ;
 	    getMS_dynIRT_anchored(
 	      curEm, curEs, curVm, curVs, curCms,
 	      curEystar, curEx, curEp,
