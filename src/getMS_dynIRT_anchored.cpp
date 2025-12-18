@@ -80,7 +80,8 @@ void getMS_dynIRT_anchored(
 
   if (!item_sigma.is_sympd()) Rcpp::stop("item_sigma must be SPD");
   mat Lambda = arma::inv_sympd(item_sigma); // 2x2
-
+  arma::mat Lambda_g = ((double)items.size()) * Lambda;
+  
   // Build group -> item index lists (consider >0 as tied; 0/-1 singletons ignored here)
   arma::ivec gids = arma::unique(anchor_group.elem( arma::find(anchor_group > 0) ));
   // If no groups, we’ll still run the singleton block below.
@@ -188,7 +189,7 @@ void getMS_dynIRT_anchored(
 
       const double quad  = 0.5*( S0*sq(A) + 2.0*Sx*A*B + Sx2*sq(B) - 2.0*Sy*A - 2.0*Syx*B );
       arma::vec diff = theta - mu;
-      const double prior = 0.5 * arma::as_scalar( diff.t() * Lambda * diff );
+      const double prior = 0.5 * arma::as_scalar( diff.t() * Lambda_g * diff );
 
       // soft box barrier
       double pm_up   = softplus(m - MS_MAX);
@@ -202,7 +203,7 @@ void getMS_dynIRT_anchored(
       arma::vec grad =
         ( S0*A - Sy  + Sx*B ) * gA
       + ( Sx*A - Syx + Sx2*B ) * gB
-      + Lambda * diff;
+      + Lambda_g * diff;
 
       // barrier grad
       grad(0) += LAMBDA_BAR * ( sigmoid(m - MS_MAX) - sigmoid(MS_MIN - m) );
@@ -213,7 +214,7 @@ void getMS_dynIRT_anchored(
         + Sx*( B*H_A + gA*gB.t() + gB*gA.t() )
         + Sx2*( gB*gB.t() )
         - Sy*H_A
-        + Lambda;
+        + Lambda_g;
 
       // barrier Hessian
       H(0,0) += LAMBDA_BAR * ( sigmoid(m - MS_MAX)*(1.0-sigmoid(m - MS_MAX))
@@ -272,7 +273,7 @@ void getMS_dynIRT_anchored(
       + Sx*( B*H_A + gA*gB.t() + gB*gA.t() )
       + Sx2*( gB*gB.t() )
       - Sy*H_A
-      + Lambda;
+      + Lambda_g;
 
     // add barrier curvature near box
     auto bcurv = [&](double z){
