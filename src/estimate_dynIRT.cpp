@@ -274,8 +274,11 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	      item_sigma, curEx2x2,
 	      startlegis, endlegis,
 	      nJ, nN, T,
-	      ag, /*prior_use_first_occurrence=*/true,
-	      /*newton_maxit=*/10, /*newton_tol=*/1e-8, /*ridge=*/1e-8
+	      ag, 
+	      true, // prior_use_first_occurrence
+	      40,   // newton_maxit (default: 10)
+	      1e-6, // newton_tol (default: 1e-8)
+	      1e-8  // ridge
 	    );
 	  } else {
 	    // If no anchor groups, use original function:
