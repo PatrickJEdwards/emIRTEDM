@@ -22,7 +22,7 @@ void getMS_dynIRT_anchored(
     unsigned int T,
     const ivec& anchor_group,
     bool prior_use_first_occurrence = true,
-    unsigned int newton_maxit = 40,
-    double newton_tol = 1e-6,
+    unsigned int newton_maxit = 10,
+    double newton_tol = 1e-8,
     double ridge = 1e-8
 );

@@ -274,7 +274,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	      startlegis, endlegis,
 	      nJ, nN, T,
 	      ag, /*prior_use_first_occurrence=*/true,
-	      /*newton_maxit=*/40, /*newton_tol=*/1e-6, /*ridge=*/1e-8
+	      /*newton_maxit=*/10, /*newton_tol=*/1e-8, /*ridge=*/1e-8
 	    );
 	  } else {
 	    // If no anchor groups, use original function:
