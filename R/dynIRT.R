@@ -31,6 +31,7 @@ dynIRT <- function(.data,
                  .data$bill.session,
                  .data$T,
                  .data$sponsor_index, # J-length vector of EDM sponsors
+                 .data$anchor_group,  # J x 1 (0 = singleton; >0 = tied)
                  .priors$x.mu0,
                  .priors$x.sigma0,
                  .priors$item.sigma,  # Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 

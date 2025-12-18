@@ -12,14 +12,15 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
                                  SEXP bill_sessionSEXP,
                                  SEXP TSEXP,
                                  SEXP sponsor_indexSEXP, // length J, 0-based row index of the sponsor MP for item j
+                                 SEXP anchor_groupSEXP,  // J x 1 (0 = singleton; >0 = tied)
                                  SEXP xmu0SEXP, 
                                  SEXP xsigma0SEXP,
                                  SEXP item_sigmaSEXP,    // Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 
                                  SEXP omega2SEXP,
-                                 SEXP rho_pSEXP,       // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
-                                 SEXP sig2_pSEXP,      // N x 1 innovation variance for propensity per legislator
-                                 SEXP pmu0SEXP,        // N x 1 prior mean for p at first served period (often 0 and large).
-                                 SEXP psigma0SEXP,     // N x 1 prior var for p at first served period (often 0 and large).
+                                 SEXP rho_pSEXP,         // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
+                                 SEXP sig2_pSEXP,        // N x 1 innovation variance for propensity per legislator
+                                 SEXP pmu0SEXP,          // N x 1 prior mean for p at first served period (often 0 and large).
+                                 SEXP psigma0SEXP,       // N x 1 prior var for p at first served period (often 0 and large).
                                  SEXP threadsSEXP,
                                  SEXP verboseSEXP,
                                  SEXP maxitSEXP,
@@ -40,6 +41,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
     Rcpp::traits::input_parameter<arma::mat>::type bill_session(bill_sessionSEXP) ;
     Rcpp::traits::input_parameter<int>::type T(TSEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type sponsor_index(sponsor_indexSEXP) ; // length J, 0-based row index of the sponsor MP for item j
+    Rcpp::traits::input_parameter<arma::mat>::type anchor_group(anchor_groupSEXP) ;   // J x 1 (0 = singleton; >0 = tied)
     Rcpp::traits::input_parameter<arma::mat>::type xmu0(xmu0SEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type xsigma0(xsigma0SEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type item_sigma(item_sigmaSEXP) ;       // Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 
@@ -64,6 +66,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
                                  bill_session,
                                  T,
                                  sponsor_index,             // length J, 0-based row index of the sponsor MP for item j
+                                 anchor_group,              // J x 1 (0 = singleton; >0 = tied)
                                  xmu0,
                                  xsigma0,
                                  item_sigma,                // Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 

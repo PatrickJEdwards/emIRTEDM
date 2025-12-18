@@ -8,13 +8,14 @@
 Rcpp::List estimate_dynIRT(arma::mat m_start,
                     arma::mat s_start,
                     arma::mat x_start,
-                    arma::mat p_start,     // matrix of propensity starting values
+                    arma::mat p_start,         // matrix of propensity starting values
                     arma::mat y,
                     arma::mat startlegis,
                     arma::mat endlegis,
                     arma::mat bill_session,
                     unsigned int T,
                     arma::mat sponsor_index,
+                    arma::mat anchor_group,    // J x 1 (0 = singleton; >0 = tied)
                     arma::mat xmu0,
                     arma::mat xsigma0,
                     arma::mat item_sigma,

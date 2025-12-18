@@ -12,12 +12,6 @@
 #include "getLBS_dynIRT.h"
 #include "getNlegis_dynIRT.h"
 #include "getEx2x2_dynIRT.h"
-//#include "getVb2_dynIRT.h"
-//#include "getEb2_dynIRT.h"
-//#include "getVb_dynIRT.h"
-//#include "getVa_dynIRT.h"
-//#include "getEba_dynIRT.h"
-//#include "getEbb_dynIRT.h"
 #include "getLast_dynIRT.h"
 #include "getX_dynIRT.h"
 #include "getOnecol_dynIRT.h"
@@ -25,7 +19,7 @@
 #include "getP_dynIRT.h"
 //#include "getP_dynIRT_ar1.h"
 #include "getMS_dynIRT.h"
-
+#include "getMS_dynIRT_anchored.h"
 
 using namespace Rcpp ;
 
@@ -39,6 +33,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
                arma::mat bill_session,    // J x 1 (0..T-1)
                unsigned int T,
                arma::mat sponsor_index,   // J x 1 (row index of sponsor MP per item)
+               arma::mat anchor_group,    // J x 1 (0 = singleton; >0 = tied)
                arma::mat xmu0,            // N x 1
                arma::mat xsigma0,         // N x 1
                arma::mat item_sigma,      // 2x2 prior covariance for (m,s)
@@ -105,16 +100,23 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
     if (!any) Rcpp::stop("No serving legislators in period t=%u", t);
   }
   
+  // --- decide whether to use grouped update ---
+  bool use_groups = false;
+  arma::ivec ag;
+  if (anchor_group.n_rows == nJ && anchor_group.n_cols >= 1) {
+    ag = arma::conv_to<arma::ivec>::from(anchor_group.col(0));
+    // use groups only if there is at least one ID > 0 that appears >1 time
+    arma::ivec pos = ag.elem(arma::find(ag > 0));
+    if (!pos.is_empty()) {
+      pos = arma::unique(pos);
+      for (int k = 0; k < (int)pos.n_elem; ++k) {
+        int g = pos(k);
+        if (arma::accu(ag == g) > 1) { use_groups = true; break; }
+      }
+    }
+  }
   
-  
-  
-  // ===== Location normalization controls (period means of theta) =====
-  //arma::vec mu_t = arma::zeros<arma::vec>(T);  // smoothed target for period means
-  //const double lambda_mu = 0.90;               // closer to 1 => slower drift toward the observed mean
-  //const bool   HARD_CENTER = false;            // set true to force mean(theta_t) = 0 every iter
-  //const double EPS_LOC = 1e-8;                 // small floor for weights
-  
-  
+  Rcout << "Note: using item anchor groups!" ;
   
   
     
@@ -266,12 +268,29 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	  // 3) (m,s) item update  — REPLACES getEx2x2/getVb2/getEb2
 	  //    New function will update curEm,curEs and their posterior variances/covariances per item,
 	  //    using: E[y*] - E[p] as the response and (E[x], Var[x]) as regressors, plus the sponsor prior.
-	  getMS_dynIRT(curEm, curEs, curVm, curVs, curCms,
-                curEystar, curEx, curEp,
-                bill_session, sponsor_index,
-                item_sigma, curEx2x2,
-                startlegis, endlegis,
-                nJ, nN, T);
+	  if (use_groups) {
+	    getMS_dynIRT_anchored(
+	      curEm, curEs, curVm, curVs, curCms,
+	      curEystar, curEx, curEp,
+	      bill_session, sponsor_index,
+	      item_sigma, curEx2x2,
+	      startlegis, endlegis,
+	      nJ, nN, T,
+	      ag, /*prior_use_first_occurrence=*/true,
+	      /*newton_maxit=*/40, /*newton_tol=*/1e-6, /*ridge=*/1e-8
+	    );
+	  } else {
+	    // If no anchor groups, use original function:
+	    getMS_dynIRT(curEm, curEs, curVm, curVs, curCms,
+                  curEystar, curEx, curEp,
+                  bill_session, sponsor_index,
+                  item_sigma, curEx2x2,
+                  startlegis, endlegis,
+                  nJ, nN, T);
+	  }
+	  
+	  
+	    
 
 	  // 4) Refresh derived alpha,beta and their moments from updated (m,s)
 	  for(j=0; j<nJ; j++){
@@ -300,90 +319,6 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	    double Esm2 = s*(m*m + vm) + 2.0*m*cms;
 	    curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
 	  }
-	  
-	  
-	  
-	  //// ===== 4.5) PERIOD-WISE LOCATION NORMALIZATION (no scale change) =====
-	  //// Goal: keep period means of theta near a slowly drifting target mu_t,
-	  //// or hard-center them to zero. We preserve eta by shifting items (m,s)
-	  //// by the same delta_t as thetas in that period.
-	  //
-	  //arma::vec delta_t(T, arma::fill::zeros);
-	  //
-	  //// Phase A: compute precision-weighted period means of theta and deltas
-    //#pragma omp parallel for schedule(static)
-	  //for (unsigned t = 0; t < T; ++t) {
-	  //  double wsum = 0.0, tsum = 0.0;
-	  //  for (unsigned i = 0; i < nN; ++i) {
-	  //    if (t >= (unsigned)startlegis(i,0) && t <= (unsigned)endlegis(i,0)) {
-	  //      double w = 1.0 / std::max(curVx(i,t), EPS_LOC);  // precision weight
-	  //      tsum += w * curEx(i,t);
-	  //      wsum += w;
-	  //    }
-	  //  }
-	  //  if (wsum <= 0.0) { delta_t(t) = 0.0; continue; }
-	  //  
-	  //  const double mean_theta_t = tsum / wsum;
-	  //  
-	  //  double target = 0.0;
-	  //  if (!HARD_CENTER) {
-	  //    const double mu_pred = (t == 0) ? 0.0 : mu_t(t-1);
-	  //    mu_t(t) = lambda_mu * mu_pred + (1.0 - lambda_mu) * mean_theta_t;
-	  //    target  = mu_t(t);
-	  //  } // else target stays 0.0
-	  //  
-	  //  delta_t(t) = mean_theta_t - target;   // subtract this from θ_it
-	  //}
-	  //
-	  //// Phase B: apply the translations θ_it ← θ_it − delta_t, and
-	  ////          m_jt, s_jt ← m_jt − delta_t for items in that period.
-	  ////          Variances are unchanged by translation.
-	  
-	  //#pragma omp parallel for schedule(static)
-	  //for (unsigned t = 0; t < T; ++t) {
-	  //  const double d = delta_t(t);
-	  //  if (std::abs(d) < 1e-12) continue;
-	  //  
-	  //  // Shift legislators in period t
-	  //  for (unsigned i = 0; i < nN; ++i) {
-	  //    if (t >= (unsigned)startlegis(i,0) && t <= (unsigned)endlegis(i,0)) {
-	  //      curEx(i,t) -= d;   // curVx(i,t) unchanged
-	  //    }
-	  //  }
-	  //  
-	  //  // Shift items that belong to period t
-	  //  for (unsigned jj = 0; jj < nJ; ++jj) {
-	  //    if (bill_session(jj,0) == (double)t) {
-	  //      curEm(jj,0) -= d;
-	  //      curEs(jj,0) -= d;
-	  //      // curVm/curVs/curCms unchanged (translation)
-	  //    }
-	  //  }
-	  //}
-	  //
-	  //// Phase C: re-sync α, β, and moments after the translation.
-	  //// β is unchanged by equal shifts of (m,s), but α changes by β·delta_t;
-	  //// recomputing from (m,s) keeps everything consistent.
-	  //for (j = 0; j < nJ; ++j) {
-	  //  double m = curEm(j,0), s = curEs(j,0);
-	  //  curEb(j,0) = 2.0*(m - s);
-	  //  curEa(j,0) = s*s - m*m;
-	  //  
-	  //  double vm  = curVm(j,0), vs = curVs(j,0), cms = curCms(j,0);
-	  //  double Eb  = curEb(j,0);
-	  //  double Vb  = 4.0*(vm + vs - 2.0*cms);
-	  //  curEbb(j,0) = Vb + Eb*Eb;
-	  //  
-	  //  double Em3 = m*m*m + 3.0*m*vm;
-	  //  double Es3 = s*s*s + 3.0*s*vs;
-	  //  double Ems2 = m*(s*s + vs) + 2.0*s*cms;
-	  //  double Esm2 = s*(m*m + vm) + 2.0*m*cms;
-	  //  curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
-	  //}
-	  //
-	  //// Keep E[y*] synchronized with current (alpha, beta, x, p)
-	  ////getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y, bill_session, startlegis, endlegis, nN, nJ);
-    
     
 		
 		// 5) propensity (non-dynamic i.i.d. Normal prior) — unchanged
@@ -463,16 +398,6 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	}
   // LOOP ENDING HERE
 
-  //curVb = getVb_dynIRT(curVb2, bill_session, nJ);  // TODO: will be removed
-	//curVa = getVa_dynIRT(curVb2, bill_session, nJ);  // TODO: will be removed
-
-	// After convergence: compute Var(beta) and Var(alpha) directly from (m,s)
-	// Var(beta) = 4(Var(m)+Var(s) - 2 Cov(m,s))
-	// Var(alpha) = Var(s^2) + Var(m^2) - 2 Cov(m^2, s^2)
-	//   with for jointly normal (m,s):
-	//   Var(m^2)   = 2*vm^2 + 4*m^2*vm
-	//   Var(s^2)   = 2*vs^2 + 4*s^2*vs
-	//   Cov(m^2,s^2) = 2*cms^2 + 4*m*s*cms
 	
 	curVb.set_size(nJ, 1);
 	curVa.set_size(nJ, 1);
