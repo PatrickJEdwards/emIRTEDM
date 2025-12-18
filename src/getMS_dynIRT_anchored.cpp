@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <vector>
 
-using arma::mat; using arma::vec; using arma::uword; using arma::ivec;
+using arma::mat; using arma::vec; using arma::uword; using arma::ivec; using arma::cube;
 
 static inline double sq(double x){ return x*x; }
 static inline double softplus(double z){ return std::log1p(std::exp(z)); }
@@ -83,7 +83,8 @@ void getMS_dynIRT_anchored(
 
   // Build group -> item index lists (consider >0 as tied; 0/-1 singletons ignored here)
   arma::ivec gids = arma::unique(anchor_group.elem( arma::find(anchor_group > 0) ));
-  if (gids.is_empty()) return; // defensively
+  // If no groups, we’ll still run the singleton block below.
+  if (gids.is_empty()) { /* fall through */ }
 
   // Parallel over groups (completely independent)
   #pragma omp parallel for schedule(static)
@@ -307,4 +308,166 @@ void getMS_dynIRT_anchored(
       curCms(j,0) = Sigma(0,1);
     }
   } // groups
+  
+  // ---- Fallback: update singletons exactly as in the per-item solver ----
+  for (uword j = 0; j < nJ; ++j) {
+    if (anchor_group((int)j) > 0) continue;  // was handled in groups
+    int t = (int)bill_session(j,0);
+    if (t < 0 || t >= (int)T) continue;
+    
+    const mat XtXt = curEx2x2.slice((uword)t);
+    double S0  = XtXt(0,0);
+    double Sx  = XtXt(0,1);
+    double Sx2 = XtXt(1,1);
+    
+    double Sy  = 0.0, Syx = 0.0;
+    for (uword i = 0; i < nN; ++i) {
+      if (t < startlegis(i,0) || t > endlegis(i,0)) continue;
+      double r = curEystar(i,j) - curEp(i,t);
+      Sy  += r;
+      Syx += r * curEx(i,t);
+    }
+    
+    int si = (int)sponsor_index(j,0) - 1;
+    if (si < 0 || si >= (int)nN) Rcpp::stop("sponsor_index out of range (singleton)");
+    double mu_m = curEx(si, t);
+    double mu_s = 0.0;
+    
+    // Start at current means
+    double m = curEm(j,0);
+    double s = curEs(j,0);
+    
+    // Newton iterations
+    double prev_obj = std::numeric_limits<double>::infinity();
+    for (uword it = 0; it < newton_maxit; ++it) {
+      // Transformations
+      double A = s*s - m*m;     // alpha
+      double B = 2.0*(m - s);   // beta
+      
+      // Gradient of A,B
+      arma::vec gA(2), gB(2);
+      gA(0) = -2.0*m;  gA(1) =  2.0*s;  // dA/dm, dA/ds
+      gB(0) =  2.0;    gB(1) = -2.0;    // dB/dm, dB/ds
+      
+      // Hessian of A (constant), B (zero)
+      arma::mat H_A(2,2,arma::fill::zeros);
+      H_A(0,0) = -2.0; H_A(1,1) = 2.0;
+      // H_B = 0
+      
+      // Objective (up to const): 0.5[ S0 A^2 + 2 Sx A B + Sx2 B^2 - 2 Sy A - 2 Syx B ] + 0.5 (theta - mu)' Λ (theta - mu)
+      arma::vec theta(2); theta(0)=m; theta(1)=s;
+      arma::vec mu(2);    mu(0)=mu_m; mu(1)=mu_s;
+      
+      double quad  = 0.5*( S0*sq(A) + 2.0*Sx*A*B + Sx2*sq(B) - 2.0*Sy*A - 2.0*Syx*B );
+      arma::vec diff = theta - mu;
+      double prior = 0.5 * arma::as_scalar( diff.t() * Lambda * diff );
+      
+      // barrier value
+      double pm_up   = softplus(m - MS_MAX);
+      double pm_low  = softplus(MS_MIN - m);
+      double ps_up   = softplus(s - MS_MAX);
+      double ps_low  = softplus(MS_MIN - s);
+      double pen_val = LAMBDA_BAR * (pm_up + pm_low + ps_up + ps_low);
+      
+      double obj = quad + prior + pen_val;
+      
+      // gradient (model + prior)
+      arma::vec grad =
+        ( S0*A - Sy  + Sx*B ) * gA
+      + ( Sx*A - Syx + Sx2*B ) * gB
+      + Lambda * diff;
+      
+      // barrier grad
+      grad(0) += LAMBDA_BAR * ( sigmoid(m - MS_MAX) - sigmoid(MS_MIN - m) );
+      grad(1) += LAMBDA_BAR * ( sigmoid(s - MS_MAX) - sigmoid(MS_MIN - s) );
+      
+      // Hessian
+      arma::mat H_A(2,2,arma::fill::zeros); H_A(0,0)=-2.0; H_A(1,1)=2.0;
+      arma::mat H =
+        S0*( gA*gA.t() + A*H_A )
+        + Sx*( B*H_A + gA*gB.t() + gB*gA.t() )
+        + Sx2*( gB*gB.t() )
+        - Sy*H_A
+        + Lambda;
+      
+      // barrier Hessian
+      H(0,0) += LAMBDA_BAR * ( sigmoid(m - MS_MAX)*(1.0 - sigmoid(m - MS_MAX))
+                                 + sigmoid(MS_MIN - m)*(1.0 - sigmoid(MS_MIN - m)) );
+      H(1,1) += LAMBDA_BAR * ( sigmoid(s - MS_MAX)*(1.0 - sigmoid(s - MS_MAX))
+                                 + sigmoid(MS_MIN - s)*(1.0 - sigmoid(MS_MIN - s)) );
+      
+      // Numerical safety: ridge if needed
+      H(0,0) += ridge; H(1,1) += ridge;
+      
+      // Check convergence on gradient
+      if (arma::norm(grad, 2) < newton_tol) break;
+      
+      // Newton step with simple damping
+      arma::vec step = arma::solve(H, grad, arma::solve_opts::fast);
+      double step_scale = 1.0;
+      double new_m, new_s, new_obj;
+      
+      for (int ls=0; ls<12; ++ls) {
+        const double cand_m = m - step_scale * step(0);
+        const double cand_s = s - step_scale * step(1);
+        
+        const double A2 = cand_s*cand_s - cand_m*cand_m;
+        const double B2 = 2.0*(cand_m - cand_s);
+        double quad2  = 0.5*( S0*sq(A2) + 2.0*Sx*A2*B2 + Sx2*sq(B2) - 2.0*Sy*A2 - 2.0*Syx*B2 );
+        arma::vec th2(2); th2(0)=cand_m; th2(1)=cand_s;
+        arma::vec df2 = th2 - mu;
+        double prior2 = 0.5 * arma::as_scalar( df2.t() * Lambda * df2 );
+        
+        double pm_up2   = softplus(cand_m - MS_MAX);
+        double pm_low2  = softplus(MS_MIN - cand_m);
+        double ps_up2   = softplus(cand_s - MS_MAX);
+        double ps_low2  = softplus(MS_MIN - cand_s);
+        double pen2     = LAMBDA_BAR * (pm_up2 + pm_low2 + ps_up2 + ps_low2);
+        
+        new_obj = quad2 + prior2 + pen2;
+        if (new_obj <= obj) { new_m=cand_m; new_s=cand_s; break; }
+        step_scale *= 0.5;
+      }
+      
+      m = new_m; s = new_s;
+      if (std::abs(prev_obj - new_obj) < newton_tol) break;
+      prev_obj = new_obj;
+    } // Newton
+    
+    // Final Hessian at (m,s) for posterior covariance
+    {
+      double A = s*s - m*m, B = 2.0*(m - s);
+      arma::vec gA(2), gB(2);
+      gA(0)=-2.0*m; gA(1)= 2.0*s; gB(0)=2.0; gB(1)=-2.0;
+      arma::mat H_A(2,2,arma::fill::zeros); H_A(0,0)=-2.0; H_A(1,1)=2.0;
+      arma::mat H =
+        S0*( gA*gA.t() + A*H_A )
+        + Sx*( B*H_A + gA*gB.t() + gB*gA.t() )
+        + Sx2*( gB*gB.t() )
+        - Sy*H_A
+        + Lambda;
+        // barrier curvature
+        auto bcurv = [&](double z){
+          double s1 = sigmoid(z - MS_MAX), s2 = sigmoid(MS_MIN - z);
+          return LAMBDA_BAR*( s1*(1.0 - s1) + s2*(1.0 - s2) );
+        };
+        H(0,0) += bcurv(m) + ridge;
+        H(1,1) += bcurv(s) + ridge;
+        
+        arma::mat Hs = 0.5*(H+H.t());
+        double jitter = ridge;
+        for (int k=0; k<6 && !Hs.is_sympd(); ++k){ jitter*=10.0; Hs.diag() += jitter; }
+        arma::mat Sigma = Hs.is_sympd() ? arma::inv_sympd(Hs)
+          : arma::inv(Hs + 1e-8 * arma::eye<arma::mat>(2,2));
+        
+        // truncated write-back
+        auto mv_m = trunc_box_scalar(m, Sigma(0,0), MS_MIN, MS_MAX);
+        auto mv_s = trunc_box_scalar(s, Sigma(1,1), MS_MIN, MS_MAX);
+        curEm(j,0)  = mv_m.first;
+        curEs(j,0)  = mv_s.first;
+        curVm(j,0)  = std::max(mv_m.second, 1e-12);
+        curVs(j,0)  = std::max(mv_s.second, 1e-12);
+        curCms(j,0) = Sigma(0,1);
+    }
+  } // j
 }
