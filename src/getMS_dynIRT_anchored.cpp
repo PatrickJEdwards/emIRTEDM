@@ -382,7 +382,8 @@ void getMS_dynIRT_anchored(
       grad(1) += LAMBDA_BAR * ( sigmoid(s - MS_MAX) - sigmoid(MS_MIN - s) );
       
       // Hessian
-      arma::mat H_A(2,2,arma::fill::zeros); H_A(0,0)=-2.0; H_A(1,1)=2.0;
+      //arma::mat H_A(2,2,arma::fill::zeros); 
+      H_A(0,0)=-2.0; H_A(1,1)=2.0;
       arma::mat H =
         S0*( gA*gA.t() + A*H_A )
         + Sx*( B*H_A + gA*gB.t() + gB*gA.t() )
