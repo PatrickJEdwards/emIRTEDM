@@ -80,7 +80,6 @@ void getMS_dynIRT_anchored(
 
   if (!item_sigma.is_sympd()) Rcpp::stop("item_sigma must be SPD");
   mat Lambda = arma::inv_sympd(item_sigma); // 2x2
-  arma::mat Lambda_g = ((double)items.size()) * Lambda;
   
   // Build group -> item index lists (consider >0 as tied; 0/-1 singletons ignored here)
   arma::ivec gids = arma::unique(anchor_group.elem( arma::find(anchor_group > 0) ));
@@ -171,6 +170,8 @@ void getMS_dynIRT_anchored(
     // start from any member's current (m,s) (doesn't matter—they’ll all be overwritten)
     double m = curEm( items[0], 0 );
     double s = curEs( items[0], 0 );
+    
+    arma::mat Lambda_g = ((double)items.size()) * Lambda;
 
     // reuse the exact same Newton step as your per-item solver
     arma::mat H_A(2,2); H_A(0,0) = -2.0; H_A(1,1) = 2.0; H_A(0,1)=H_A(1,0)=0.0;
