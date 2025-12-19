@@ -437,27 +437,30 @@ void getMS_dynIRT_anchored(
       // Newton step with simple damping
       arma::vec step = arma::solve(H, grad, arma::solve_opts::fast);
       double step_scale = 1.0;
-      double new_m, new_s, new_obj;
+      double new_m = m, new_s = s, new_obj = obj;
       
-      for (int ls=0; ls<12; ++ls) {
+      for (int ls = 0; ls < 12; ++ls) {
         const double cand_m = m - step_scale * step(0);
         const double cand_s = s - step_scale * step(1);
         
         const double A2 = cand_s*cand_s - cand_m*cand_m;
         const double B2 = 2.0*(cand_m - cand_s);
-        double quad2  = 0.5*( S0*sq(A2) + 2.0*Sx*A2*B2 + Sx2*sq(B2) - 2.0*Sy*A2 - 2.0*Syx*B2 );
+        
+        const double quad2  = 0.5*( S0*sq(A2) + 2.0*Sx*A2*B2 + Sx2*sq(B2) - 2.0*Sy*A2 - 2.0*Syx*B2 );
         arma::vec th2(2); th2(0)=cand_m; th2(1)=cand_s;
         arma::vec df2 = th2 - mu;
-        double prior2 = 0.5 * arma::as_scalar( df2.t() * Lambda * df2 );
+        const double prior2 = 0.5 * arma::as_scalar( df2.t() * Lambda * df2 );
         
-        double pm_up2   = softplus(cand_m - MS_MAX);
-        double pm_low2  = softplus(MS_MIN - cand_m);
-        double ps_up2   = softplus(cand_s - MS_MAX);
-        double ps_low2  = softplus(MS_MIN - cand_s);
-        double pen2     = LAMBDA_BAR * (pm_up2 + pm_low2 + ps_up2 + ps_low2);
+        // barrier at candidate
+        const double pm_up2   = softplus(cand_m - MS_MAX);
+        const double pm_low2  = softplus(MS_MIN - cand_m);
+        const double ps_up2   = softplus(cand_s - MS_MAX);
+        const double ps_low2  = softplus(MS_MIN - cand_s);
+        const double pen2     = LAMBDA_BAR * (pm_up2 + pm_low2 + ps_up2 + ps_low2);
         
-        new_obj = quad2 + prior2 + pen2;
-        if (new_obj <= obj) { new_m=cand_m; new_s=cand_s; break; }
+        const double obj2 = quad2 + prior2 + pen2;
+        
+        if (obj2 <= obj) { new_m = cand_m; new_s = cand_s; new_obj = obj2; break; }
         step_scale *= 0.5;
       }
       
