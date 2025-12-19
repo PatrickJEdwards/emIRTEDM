@@ -121,11 +121,11 @@ void getMS_dynIRT_anchored(
 
     
     
-    // choose prior mean for m: sponsor_x from earliest session;
-    // if multiple items tie on that earliest session, break the tie by the
-    // smallest EDM index (i.e., smallest j in 0..nJ-1).
-    int j_ref = -1;
-    int t_ref = std::numeric_limits<int>::max();
+    
+    // choose prior mean for m: sponsor_x from earliest session; 
+    // if multiple items tie on that earliest session, break the tie by the 
+    // smallest EDM index (i.e., smallest j in 0..nJ-1). 
+    int j_ref = -1; int t_ref = std::numeric_limits<int>::max(); 
     
     for (uword k = 0; k < items.size(); ++k) {
       const int j = static_cast<int>(items[k]);            // item's column index (0-based)
@@ -139,9 +139,18 @@ void getMS_dynIRT_anchored(
       }
     }
     
-    // safety checks (should never trigger in valid input)
-    if (j_ref < 0 || t_ref < 0 || t_ref >= static_cast<int>(T))
+    // safety checks (should never trigger in valid input) 
+    if (j_ref < 0 || t_ref < 0 || t_ref >= static_cast<int>(T)) 
       Rcpp::stop("anchor-group tie-break failed: invalid j_ref/t_ref (group %d)", gid);
+    
+    // sponsor prior center for m from the selected reference item 
+    int si = static_cast<int>(sponsor_index(j_ref, 0)) - 1; // 1-based -> 0-based 
+    if (si < 0 || si >= static_cast<int>(nN)) 
+      Rcpp::stop("sponsor_index out of range (group %d)", gid); 
+    
+    double mu_m = curEx(si, t_ref); 
+    double mu_s = 0.0;
+    
     
     // sponsor prior center for m from the selected reference item
     int si = static_cast<int>(sponsor_index(j_ref, 0)) - 1; // 1-based -> 0-based
@@ -149,21 +158,21 @@ void getMS_dynIRT_anchored(
       Rcpp::stop("sponsor_index out of range (group %d)", gid);
     
     // with a group-weighted mean of sponsor positions at their own periods:
-    double mu_m = 0.0;
-    double wsum = 0.0;
-    for (uword k = 0; k < items.size(); ++k) {
-      uword j  = items[k];
-      int t    = (int)bill_session(j,0);
-      int si_j = (int)sponsor_index(j,0) - 1;
-      if (si_j < 0 || si_j >= (int)nN) continue;
-      // weight by S0_t (size of present set) to stabilize
-      const mat XtXt = curEx2x2.slice((uword)t);
-      double w = std::max(1.0, XtXt(0,0));
-      mu_m += w * curEx(si_j, t);
-      wsum += w;
-    }
-    if (wsum > 0) mu_m /= wsum; else mu_m = curEx(si, t_ref);
-    double mu_s = 0.0;
+    //double mu_m = 0.0;
+    //double wsum = 0.0;
+    //for (uword k = 0; k < items.size(); ++k) {
+    //  uword j  = items[k];
+    //  int t    = (int)bill_session(j,0);
+    //  int si_j = (int)sponsor_index(j,0) - 1;
+    //  if (si_j < 0 || si_j >= (int)nN) continue;
+    //  // weight by S0_t (size of present set) to stabilize
+    //  const mat XtXt = curEx2x2.slice((uword)t);
+    //  double w = std::max(1.0, XtXt(0,0));
+    //  mu_m += w * curEx(si_j, t);
+    //  wsum += w;
+    //}
+    //if (wsum > 0) mu_m /= wsum; else mu_m = curEx(si, t_ref);
+    //double mu_s = 0.0;
 
     
     // choose prior mean for m: earliest occurrence sponsor_x (default)
