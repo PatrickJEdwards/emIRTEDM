@@ -6,38 +6,53 @@
 
 using arma::mat; using arma::vec; using arma::uword; using arma::ivec; using arma::cube;
 
-static inline double sq(double x){ return x*x; }
+// ---- Smooth box barrier helpers ----
 static inline double softplus(double z){ return std::log1p(std::exp(z)); }
 static inline double sigmoid (double z){ return 1.0 / (1.0 + std::exp(-z)); }
 
+static inline double sq(double x){ return x*x; }
 static inline std::pair<double,double>
   
+// ---- Stable log(exp(b) - exp(a)) with double return ----
+static inline double log_diff_exp(double log_b, double log_a){
+  if (log_b < log_a) std::swap(log_b, log_a);
+  const double x = std::exp(log_a - log_b);
+  if (x >= 1.0) return -std::numeric_limits<double>::infinity();
+  return log_b + std::log1p(-x);
+}
+
+/// ---- Univariate truncated-Normal moments (for soft truncation at write-back) ----
 trunc_box_scalar(double mu, double var, double L, double U){
   const double VAR_FLOOR = 1e-12;
   var = std::max(var, VAR_FLOOR);
-  if (!(U > L)) return { std::min(U,std::max(L,mu)), VAR_FLOOR };
-
+  if (!(U > L)) {
+    double m = std::min(U, std::max(L, mu));
+    return { m, VAR_FLOOR };
+  }
+  
   const double sd = std::sqrt(var);
   const double a  = (L - mu)/sd;
   const double b  = (U - mu)/sd;
-
+  
   const double log_phi_a = R::dnorm(a, 0.0, 1.0, /*log*/true);
   const double log_phi_b = R::dnorm(b, 0.0, 1.0, /*log*/true);
   const double log_Phi_a = R::pnorm(a, 0.0, 1.0, /*lower*/true,  /*log*/true);
   const double log_Phi_b = R::pnorm(b, 0.0, 1.0, /*lower*/true,  /*log*/true);
-
-  const double x = std::exp(log_Phi_a - log_Phi_b);
-  const double logZ = (x<1.0) ? (log_phi_b + std::log1p(-x)) : -std::numeric_limits<double>::infinity();
-  if (!std::isfinite(logZ)) return { std::min(U,std::max(L,mu)), VAR_FLOOR };
-
+  
+  const double logZ = log_diff_exp(log_Phi_b, log_Phi_a);
+  if (!std::isfinite(logZ)) {
+    double m = std::min(U, std::max(L, mu));
+    return { m, VAR_FLOOR };
+  }
+  
   const double r_a = std::exp(log_phi_a - logZ);
   const double r_b = std::exp(log_phi_b - logZ);
-
+  
   const double mean = mu + sd * (r_a - r_b);
   const double term = (a * r_a - b * r_b);
   double variance   = var * (1.0 + term - (r_a - r_b)*(r_a - r_b));
   if (!(variance > 0.0) || !std::isfinite(variance)) variance = VAR_FLOOR;
-
+  
   double mean_box = std::min(U, std::max(L, mean));
   return { mean_box, variance };
 }
