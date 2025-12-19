@@ -240,7 +240,7 @@ void getMS_dynIRT_anchored(
         const double quad2  = 0.5*( S0*sq(A2) + 2.0*Sx*A2*B2 + Sx2*sq(B2) - 2.0*Sy*A2 - 2.0*Syx*B2 );
         arma::vec th2(2); th2(0)=cand_m; th2(1)=cand_s;
         arma::vec df2 = th2 - mu;
-        const double prior2 = 0.5 * arma::as_scalar( df2.t() * Lambda * df2 );
+        const double prior2 = 0.5 * arma::as_scalar( df2.t() * Lambda_g * df2 );
 
         const double pm_up2   = softplus(cand_m - MS_MAX);
         const double pm_low2  = softplus(MS_MIN - cand_m);
