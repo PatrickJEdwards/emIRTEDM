@@ -5,12 +5,14 @@
 
 using arma::mat; using arma::vec; using arma::uword; using arma::cube;
 
-static inline double sq(double x){ return x*x; }
 
 // ---- Smooth box barrier helpers ----
 static inline double softplus(double z){ return std::log1p(std::exp(z)); }
 static inline double sigmoid (double z){ return 1.0 / (1.0 + std::exp(-z)); }
 
+static inline double sq(double x){ return x*x; }
+static inline std::pair<double,double>
+  
 // ---- Stable log(exp(b) - exp(a)) with double return ----
 static inline double log_diff_exp(double log_b, double log_a){
   if (log_b < log_a) std::swap(log_b, log_a);
@@ -20,7 +22,6 @@ static inline double log_diff_exp(double log_b, double log_a){
 }
 
 /// ---- Univariate truncated-Normal moments (for soft truncation at write-back) ----
-static inline std::pair<double,double>
 trunc_box_scalar(double mu, double var, double L, double U){
   const double VAR_FLOOR = 1e-12;
   var = std::max(var, VAR_FLOOR);
