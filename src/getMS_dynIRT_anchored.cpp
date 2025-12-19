@@ -131,9 +131,23 @@ void getMS_dynIRT_anchored(
     if (si < 0 || si >= static_cast<int>(nN))
       Rcpp::stop("sponsor_index out of range (group %d)", gid);
     
-    double mu_m = curEx(si, t_ref);
+    // with a group-weighted mean of sponsor positions at their own periods:
+    double mu_m = 0.0;
+    double wsum = 0.0;
+    for (uword k = 0; k < items.size(); ++k) {
+      uword j  = items[k];
+      int t    = (int)bill_session(j,0);
+      int si_j = (int)sponsor_index(j,0) - 1;
+      if (si_j < 0 || si_j >= (int)nN) continue;
+      // weight by S0_t (size of present set) to stabilize
+      const mat XtXt = curEx2x2.slice((uword)t);
+      double w = std::max(1.0, XtXt(0,0));
+      mu_m += w * curEx(si_j, t);
+      wsum += w;
+    }
+    if (wsum > 0) mu_m /= wsum; else mu_m = curEx(si, t_ref);
     double mu_s = 0.0;
-    
+
     
     // choose prior mean for m: earliest occurrence sponsor_x (default)
     //int j_ref = (int)items.front();
