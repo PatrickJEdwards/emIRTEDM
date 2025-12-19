@@ -151,12 +151,6 @@ void getMS_dynIRT_anchored(
     double mu_m = curEx(si, t_ref); 
     double mu_s = 0.0;
     
-    
-    // sponsor prior center for m from the selected reference item
-    int si = static_cast<int>(sponsor_index(j_ref, 0)) - 1; // 1-based -> 0-based
-    if (si < 0 || si >= static_cast<int>(nN))
-      Rcpp::stop("sponsor_index out of range (group %d)", gid);
-    
     // with a group-weighted mean of sponsor positions at their own periods:
     //double mu_m = 0.0;
     //double wsum = 0.0;
