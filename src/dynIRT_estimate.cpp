@@ -65,6 +65,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
                                  y, 
                                  startlegis,
                                  endlegis,
+                                 prevlegis,                 // N x 1 column matrix of previous contiguous legislators (== 0 when no prior contiguous legislators).
                                  bill_session,
                                  T,
                                  sponsor_index,             // length J, 0-based row index of the sponsor MP for item j
