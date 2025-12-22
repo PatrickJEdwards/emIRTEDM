@@ -119,15 +119,23 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
   }
   if (use_groups) Rcout << "Note: using item anchor groups!\n\n";
   
+  
+  
+  
+  
   // ---- decide whether to use prevlegis in ideal point update ----
   bool use_prevlegis = false;
-  arma::ivec pl;
-  if (prevlegis.n_rows == nJ && prevlegis.n_cols >= 1) {
-    pl = arma::conv_to<arma::ivec>::from(prevlegis.col(0));
+  arma::mat pl;
+  if (prevlegis.n_rows == nN && prevlegis.n_cols >= 1) {
+    pl = prevlegis.col(0);           // N x 1
     // use prevlegis only if there is at least one ID > 0 
     use_prevlegis = arma::any(pl > 0);
   }
   if (use_prevlegis) Rcout << "Note: using previous time period prior means!\n\n";
+    
+    
+    
+    
     
   //// Initial "Current" Containers
   arma::mat curEystar(nN, nJ, arma::fill::zeros);
