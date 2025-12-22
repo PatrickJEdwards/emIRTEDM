@@ -9,6 +9,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
                                  SEXP ySEXP,
                                  SEXP startlegisSEXP,
                                  SEXP endlegisSEXP,
+                                 SEXP prevlegisSEXP,     // N x 1 column matrix of previous contiguous legislators (== 0 when no prior contiguous legislators).
                                  SEXP bill_sessionSEXP,
                                  SEXP TSEXP,
                                  SEXP sponsor_indexSEXP, // length J, 0-based row index of the sponsor MP for item j
@@ -38,6 +39,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
     Rcpp::traits::input_parameter<arma::mat>::type y(ySEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type startlegis(startlegisSEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type endlegis(endlegisSEXP) ;
+    Rcpp::traits::input_parameter<arma::mat>::type prevlegis(prevlegisSEXP) ;         // N x 1 column matrix of previous contiguous legislators (== 0 when no prior contiguous legislators).
     Rcpp::traits::input_parameter<arma::mat>::type bill_session(bill_sessionSEXP) ;
     Rcpp::traits::input_parameter<int>::type T(TSEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type sponsor_index(sponsor_indexSEXP) ; // length J, 0-based row index of the sponsor MP for item j

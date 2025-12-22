@@ -14,6 +14,7 @@
 #include "getEx2x2_dynIRT.h"
 #include "getLast_dynIRT.h"
 #include "getX_dynIRT.h"
+#include "getX_dynIRT_P2.h"
 #include "getOnecol_dynIRT.h"
 #include "checkConv_dynIRT.h"
 #include "getP_dynIRT.h"
@@ -23,20 +24,21 @@
 
 using namespace Rcpp ;
 
-List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
-               arma::mat s_start,         // J x 1: starting s
+List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
+               arma::mat s_start,         // J x 1 starting s
                arma::mat x_start,         // N x T
                arma::mat p_start,         // N x T matrix of propensity starting values
                arma::mat y,               // N x J
                arma::mat startlegis,      // N x 1
                arma::mat endlegis,        // N x 1
+               arma::mat prevlegis,       // N x 1 column matrix of previous contiguous legislators (== 0 when no prior contiguous legislators).
                arma::mat bill_session,    // J x 1 (0..T-1)
                unsigned int T,
                arma::mat sponsor_index,   // J x 1 (row index of sponsor MP per item)
                arma::mat anchor_group,    // J x 1 (0 = singleton; >0 = tied)
                arma::mat xmu0,            // N x 1
                arma::mat xsigma0,         // N x 1
-               arma::mat item_sigma,      // 2x2 prior covariance for (m,s)
+               arma::mat item_sigma,      // 2 x 2 prior covariance for (m,s)
                arma::mat omega2,          // N x 1 (RW variance for x)
                double rho_p,              // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
                arma::mat sig2_p,          // N x 1 innovation variance for propensity per legislator
@@ -115,8 +117,17 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
       }
     }
   }
-  
   if (use_groups) Rcout << "Note: using item anchor groups!\n\n";
+  
+  // ---- decide whether to use prevlegis in ideal point update ----
+  bool use_prevlegis = false;
+  arma::ivec pl;
+  if (prevlegis.n_rows == nJ && prevlegis.n_cols >= 1) {
+    pl = arma::conv_to<arma::ivec>::from(prevlegis.col(0));
+    // use prevlegis only if there is at least one ID > 0 
+    use_prevlegis = arma::any(pl > 0);
+  }
+  if (use_prevlegis) Rcout << "Note: using previous time period prior means!\n\n";
     
   //// Initial "Current" Containers
   arma::mat curEystar(nN, nJ, arma::fill::zeros);
@@ -247,15 +258,18 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 		
 		
 		// 1) E[y*] (uses alpha,beta,p,x)
-		getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y, 
-                   bill_session, startlegis, endlegis,  nN, nJ);
+		getEystar_dynIRT(curEystar, curEa, curEb, curEx, curEp, y, bill_session, startlegis, endlegis,  nN, nJ);
 	  if (!curEystar.is_finite()) Rcpp::stop("Eystar contains non-finite values after getEystar_dynIRT");
 	  
 	  
 	  // 2) x-update (needs E[beta^2], E[beta*alpha]); we'll refresh them after the item step,
 	  //    but for numerical stability keep last values for the very first x-update
-	  getX_dynIRT(curEx, curVx, curEbb, omega2, curEb, curEystar, curEba,
-               startlegis, endlegis, xmu0, xsigma0, T, nN, end_session, curEp);
+	  if (use_prevlegis) {
+	    getX_dynIRT_P2(curEx, curVx, curEbb, omega2, curEb, curEystar, curEba, startlegis, endlegis, pl, xmu0, xsigma0, T, nN, end_session, curEp);
+	  } else {
+	    // If no prevlegis values provided, use original function:
+	    getX_dynIRT(curEx, curVx, curEbb, omega2, curEb, curEystar, curEba, startlegis, endlegis, xmu0, xsigma0, T, nN, end_session, curEp);
+	  }
 	  if (!curEx.is_finite() || !curVx.is_finite()) Rcpp::stop("Ex/Vx non-finite after getX_dynIRT");
 	  
 	  
@@ -267,14 +281,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	  //    New function will update curEm,curEs and their posterior variances/covariances per item,
 	  //    using: E[y*] - E[p] as the response and (E[x], Var[x]) as regressors, plus the sponsor prior.
 	  if (use_groups) {
-	    getMS_dynIRT_anchored(
-	      curEm, curEs, curVm, curVs, curCms,
-	      curEystar, curEx, curEp,
-	      bill_session, sponsor_index,
-	      item_sigma, curEx2x2,
-	      startlegis, endlegis,
-	      nJ, nN, T,
-	      ag, 
+	    getMS_dynIRT_anchored(curEm, curEs, curVm, curVs, curCms, curEystar, curEx, curEp, bill_session, sponsor_index, item_sigma, curEx2x2, startlegis, endlegis, nJ, nN, T, ag, 
 	      true, // prior_use_first_occurrence
 	      40,   // newton_maxit (default: 10)
 	      1e-6, // newton_tol (default: 1e-8)
@@ -282,12 +289,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 	    );
 	  } else {
 	    // If no anchor groups, use original function:
-	    getMS_dynIRT(curEm, curEs, curVm, curVs, curCms,
-                  curEystar, curEx, curEp,
-                  bill_session, sponsor_index,
-                  item_sigma, curEx2x2,
-                  startlegis, endlegis,
-                  nJ, nN, T);
+	    getMS_dynIRT(curEm, curEs, curVm, curVs, curCms, curEystar, curEx, curEp, bill_session, sponsor_index, item_sigma, curEx2x2, startlegis, endlegis, nJ, nN, T);
 	  }
 	  
 	  
@@ -393,8 +395,8 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1: starting m
 		oldEp = curEp;
 		oldEa = curEa;   // keep derived for compatibility with existing checkConv
 		oldEb = curEb;
-		oldEm = curEm;   // NEW
-		oldEs = curEs;   // NEW
+		oldEm = curEm;
+		oldEs = curEs;
 
 	}
   // LOOP ENDING HERE

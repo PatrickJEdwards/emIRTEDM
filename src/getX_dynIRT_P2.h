@@ -1,11 +1,11 @@
 // -*- mode: C++; c-indent-level: 4; c-basic-offset: 4; tab-width: 4 -*-
 
-#ifndef GETX_DYNIRT_HPP
-#define GETX_DYNIRT_HPP
+#ifndef GETX_DYNIRT_P2_HPP
+#define GETX_DYNIRT_P2_HPP
 
 #include <RcppArmadillo.h>
 
-void getX_dynIRT(arma::mat &Ex,
+void getX_dynIRT_P2(arma::mat &Ex,
                 arma::mat &Vx,
                 const arma::mat &Ebb,
                 const arma::mat &omega2,
@@ -14,6 +14,7 @@ void getX_dynIRT(arma::mat &Ex,
                 const arma::mat &Eba,
                 const arma::mat &startlegis,
                 const arma::mat &endlegis,
+                const arma::mat &prevlegis,
                 const arma::mat &xmu0,
                 const arma::mat &xsigma0,
                 const int T,
@@ -23,5 +24,3 @@ void getX_dynIRT(arma::mat &Ex,
                 );
 
 #endif
-
-

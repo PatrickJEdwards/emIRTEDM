@@ -28,6 +28,7 @@ dynIRT <- function(.data,
                  .data$rc,
                  .data$startlegis,
                  .data$endlegis,
+                 .data$prevlegis,     # N x 1 column matrix of previous contiguous legislators (== 0 when no prior contiguous legislators).
                  .data$bill.session,
                  .data$T,
                  .data$sponsor_index, # J-length vector of EDM sponsors

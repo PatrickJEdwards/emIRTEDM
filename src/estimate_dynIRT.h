@@ -12,6 +12,7 @@ Rcpp::List estimate_dynIRT(arma::mat m_start,
                     arma::mat y,
                     arma::mat startlegis,
                     arma::mat endlegis,
+                    arma::mat prevlegis,       // N x 1 column matrix of previous contiguous legislators (== 0 when no prior contiguous legislators).
                     arma::mat bill_session,
                     unsigned int T,
                     arma::mat sponsor_index,
