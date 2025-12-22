@@ -129,55 +129,55 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
   if (prevlegis.n_rows == nN && prevlegis.n_cols >= 1) {
     pl = prevlegis.col(0);           // N x 1
     // use prevlegis only if there is at least one ID > 0 
-    use_prevlegis = arma::any(pl > 0);
+    use_prevlegis = (arma::accu(pl > 0.0) > 0);
   }
   if (use_prevlegis) Rcout << "Note: using previous time period prior means!\n\n";
-    
-    
-    
-    
-    
+  
+  
+  
+  
+  
   //// Initial "Current" Containers
   arma::mat curEystar(nN, nJ, arma::fill::zeros);
-    
+  
   // --- Items: primitives ---
   arma::mat curEm = m_start;   // J x 1
   arma::mat curEs = s_start;   // J x 1
-    
+  
   // Derived (for compatibility with downstream calls that still expect alpha/beta):
   arma::mat curEa(nJ,1);       // alpha = s^2 - m^2
   arma::mat curEb(nJ,1);       // beta  = 2(m - s)
-    
+  
   // Moments used by x-update: E[beta^2], E[beta*alpha]
   arma::mat curEbb(nJ,1);
   arma::mat curEba(nJ,1);
-    
-    
+  
+  
   // Optional posterior variances for (m,s) to be filled by the new item updater:
   arma::mat curVm(nJ,1, arma::fill::zeros);    // Var(m_jt)
   arma::mat curVs(nJ,1, arma::fill::zeros);    // Var(s_jt)
   arma::mat curCms(nJ,1, arma::fill::zeros);   // Cov(m_jt, s_jt)
-    
+  
   arma::mat Nlegis_session;	 // T x 1
   arma::mat legis_by_session; // list-like; dense matrix layout
   arma::cube curEx2x2(2, 2, T, arma::fill::zeros);
   //arma::cube curVb2(2, 2, T, arma::fill::zeros);   // (will be deprecated when items switch fully to m,s)
-    
+  
   //arma::mat curEb2(nJ, 2); // (will go away when we remove getEb2_dynIRT)
   arma::mat curVb;
   arma::mat curVa;
-    
+  
   arma::mat end_session;		
   //arma::mat ones_col;
-
+  
   arma::mat curEx = x_start;                 // N x T
   arma::mat curVx(nN, T, arma::fill::zeros); // N x T
-    
+  
   arma::mat curEp = p_start;                 // N x T
   arma::mat curVp(nN, T, arma::fill::zeros); // N x T
-    
+  
   unsigned int i, j;
-
+  
 	/// Clean curEx outside service windows
 	for(i=0; i < nN; i++){
 	  for(j=0; j<T; j++){
