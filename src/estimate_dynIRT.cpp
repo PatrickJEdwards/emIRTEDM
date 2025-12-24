@@ -142,9 +142,8 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
   arma::mat sl;  // N x 1
   if (xsign.n_rows == nN && xsign.n_cols >= 1) {
     sl = xsign.col(0);                 // N x 1
-    // use xsign only if there is at least one row value != 0 
     const double TOL = 1e-12;
-    use_xsign = arma::any(arma::abs(sl) > TOL);  // TRUE if any entry is nonzero
+    use_xsign = (arma::accu(arma::abs(sl) > TOL) > 0);  // scalar -> bool
   }
   if (use_xsign) Rcout << "Note: using ideal point sign constraints!\n\n";
   
