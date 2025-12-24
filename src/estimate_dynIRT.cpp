@@ -76,8 +76,8 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
   if (endlegis.n_rows   != nN || endlegis.n_cols   != 1) Rcpp::stop("endlegis must be N x 1");
   
   // ---- Validate xsign ----
-  if ((int)xsign.n_rows != N || (int)xsign.n_cols != 1) {
-    Rcpp::stop("xsign must be Nx1. Got %dx%d, expected %dx1.", (int)xsign.n_rows, (int)xsign.n_cols, N);
+  if (xsign.n_rows != nN || xsign.n_cols != 1) {
+    Rcpp::stop("xsign must be N x 1. Got %d x %d, expected %d x 1.", (int)xsign.n_rows, (int)xsign.n_cols, (int)nN);
   }
   
   // Check bill_session bounds and integer-ness:
@@ -139,16 +139,14 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
   
   // ---- decide whether to use xsign in ideal point update ----
   bool use_xsign = false;
-  arma::mat sl;
+  arma::mat sl;  // N x 1
   if (xsign.n_rows == nN && xsign.n_cols >= 1) {
-    sl = use_xsign.col(0);           // N x 1
+    sl = xsign.col(0);                 // N x 1
     // use xsign only if there is at least one row value != 0 
     const double TOL = 1e-12;
-    use_xsign = arma::any(arma::abs(xsign.col(0)) > TOL);
+    use_xsign = arma::any(arma::abs(sl) > TOL);  // TRUE if any entry is nonzero
   }
   if (use_xsign) Rcout << "Note: using ideal point sign constraints!\n\n";
-  
-  
   
   //// Initial "Current" Containers
   arma::mat curEystar(nN, nJ, arma::fill::zeros);
