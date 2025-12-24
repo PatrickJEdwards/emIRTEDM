@@ -19,6 +19,7 @@ Rcpp::List estimate_dynIRT(arma::mat m_start,
                     arma::mat anchor_group,    // J x 1 (0 = singleton; >0 = tied)
                     arma::mat xmu0,
                     arma::mat xsigma0,
+                    arma::mat xsign,           // Nx1: legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
                     arma::mat item_sigma,
                     arma::mat omega2,
                     double rho_p,              // AR(1) coefficient in (-1,1). Use 1.0 for random walk.

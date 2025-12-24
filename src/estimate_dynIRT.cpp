@@ -15,6 +15,7 @@
 #include "getLast_dynIRT.h"
 #include "getX_dynIRT.h"
 #include "getX_dynIRT_P2.h"
+#include "getX_dynIRT_P3.h"
 #include "getOnecol_dynIRT.h"
 #include "checkConv_dynIRT.h"
 #include "getP_dynIRT.h"
@@ -38,6 +39,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
                arma::mat anchor_group,    // J x 1 (0 = singleton; >0 = tied)
                arma::mat xmu0,            // N x 1
                arma::mat xsigma0,         // N x 1
+               arma::mat xsign,           // N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
                arma::mat item_sigma,      // 2 x 2 prior covariance for (m,s)
                arma::mat omega2,          // N x 1 (RW variance for x)
                double rho_p,              // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
@@ -73,6 +75,10 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
   if (startlegis.n_rows != nN || startlegis.n_cols != 1) Rcpp::stop("startlegis must be N x 1");
   if (endlegis.n_rows   != nN || endlegis.n_cols   != 1) Rcpp::stop("endlegis must be N x 1");
   
+  // ---- Validate xsign ----
+  if ((int)xsign.n_rows != N || (int)xsign.n_cols != 1) {
+    Rcpp::stop("xsign must be Nx1. Got %dx%d, expected %dx1.", (int)xsign.n_rows, (int)xsign.n_cols, N);
+  }
   
   // Check bill_session bounds and integer-ness:
   for (unsigned j = 0; j < nJ; ++j) {
@@ -102,7 +108,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
     if (!any) Rcpp::stop("No serving legislators in period t=%u", t);
   }
   
-  // --- decide whether to use grouped update ---
+  // ---- decide whether to use grouped update ----
   bool use_groups = false;
   arma::ivec ag;
   if (anchor_group.n_rows == nJ && anchor_group.n_cols >= 1) {
@@ -120,9 +126,6 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
   if (use_groups) Rcout << "Note: using item anchor groups!\n\n";
   
   
-  
-  
-  
   // ---- decide whether to use prevlegis in ideal point update ----
   bool use_prevlegis = false;
   arma::mat pl;
@@ -131,9 +134,19 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
     // use prevlegis only if there is at least one ID > 0 
     use_prevlegis = (arma::accu(pl > 0.0) > 0);
   }
-  if (use_prevlegis) Rcout << "Note: using previous time period prior means!\n\n";
+  if (use_prevlegis) Rcout << "Note: using previous time period prior ideal point means!\n\n";
   
   
+  // ---- decide whether to use xsign in ideal point update ----
+  bool use_xsign = false;
+  arma::mat sl;
+  if (xsign.n_rows == nN && xsign.n_cols >= 1) {
+    sl = use_xsign.col(0);           // N x 1
+    // use xsign only if there is at least one row value != 0 
+    const double TOL = 1e-12;
+    use_xsign = arma::any(arma::abs(xsign.col(0)) > TOL);
+  }
+  if (use_xsign) Rcout << "Note: using ideal point sign constraints!\n\n";
   
   
   
@@ -272,10 +285,11 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
 	  
 	  // 2) x-update (needs E[beta^2], E[beta*alpha]); we'll refresh them after the item step,
 	  //    but for numerical stability keep last values for the very first x-update
-	  if (use_prevlegis) {
+	  if (use_prevlegis && use_xsign) {
+	    getX_dynIRT_P3(curEx, curVx, curEbb, omega2, curEb, curEystar, curEba, startlegis, endlegis, pl, xmu0, xsigma0, sl, T, nN, end_session, curEp);
+	  } else if (use_prevlegis && !use_xsign) {
 	    getX_dynIRT_P2(curEx, curVx, curEbb, omega2, curEb, curEystar, curEba, startlegis, endlegis, pl, xmu0, xsigma0, T, nN, end_session, curEp);
 	  } else {
-	    // If no prevlegis values provided, use original function:
 	    getX_dynIRT(curEx, curVx, curEbb, omega2, curEb, curEystar, curEba, startlegis, endlegis, xmu0, xsigma0, T, nN, end_session, curEp);
 	  }
 	  if (!curEx.is_finite() || !curVx.is_finite()) Rcpp::stop("Ex/Vx non-finite after getX_dynIRT");

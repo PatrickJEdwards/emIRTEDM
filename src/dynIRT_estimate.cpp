@@ -16,6 +16,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
                                  SEXP anchor_groupSEXP,  // J x 1 (0 = singleton; >0 = tied)
                                  SEXP xmu0SEXP, 
                                  SEXP xsigma0SEXP,
+                                 SEXP xsignSEXP,         // N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
                                  SEXP item_sigmaSEXP,    // Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 
                                  SEXP omega2SEXP,
                                  SEXP rho_pSEXP,         // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
@@ -46,6 +47,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
     Rcpp::traits::input_parameter<arma::mat>::type anchor_group(anchor_groupSEXP) ;   // J x 1 (0 = singleton; >0 = tied)
     Rcpp::traits::input_parameter<arma::mat>::type xmu0(xmu0SEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type xsigma0(xsigma0SEXP) ;
+    Rcpp::traits::input_parameter<arma::mat>::type xsign(xsignSEXP) ;                 // N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
     Rcpp::traits::input_parameter<arma::mat>::type item_sigma(item_sigmaSEXP) ;       // Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 
     Rcpp::traits::input_parameter<arma::mat>::type omega2(omega2SEXP) ;
     Rcpp::traits::input_parameter<double>::type rho_p(rho_pSEXP) ;                    // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
@@ -72,6 +74,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
                                  anchor_group,              // J x 1 (0 = singleton; >0 = tied)
                                  xmu0,
                                  xsigma0,
+                                 xsign,                     // N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
                                  item_sigma,                // Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 
                                  omega2, 
                                  rho_p,                     // AR(1) coefficient in (-1,1). Use 1.0 for random walk.

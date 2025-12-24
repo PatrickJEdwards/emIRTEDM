@@ -35,6 +35,7 @@ dynIRT <- function(.data,
                  .data$anchor_group,  # J x 1 (0 = singleton; >0 = tied)
                  .priors$x.mu0,
                  .priors$x.sigma0,
+                 .priors$x.sign,      # N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
                  .priors$item.sigma,  # Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 
                  .priors$omega2,
                  .priors$rho_p,       # AR(1) coefficient in (-1,1). Use 1.0 for random walk.
