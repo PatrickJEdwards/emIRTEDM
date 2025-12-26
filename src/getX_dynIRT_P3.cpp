@@ -77,7 +77,7 @@ void getX_dynIRT_P3(arma::mat &Ex,              // NxT: current ideal points for
   const double X_MAX =    500.0;  // upper bound for ideal points
   const double EPS   =    1e-8;  // small numeric floor
   const double EPSV  =    1e-12; // min variance
-  const double BETA_EPS = 1e-3;  // treat betaDD≈0 as no information
+  const double BETA_EPS = 1e-8;  // treat betaDD≈0 as no information
   
   // ---- Precompute truncation bounds per legislator ----
   arma::colvec Lb(N), Ub(N);
