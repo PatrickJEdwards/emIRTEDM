@@ -361,7 +361,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
     
     // 5) propensity (non-dynamic i.i.d. Normal prior) — unchanged
 		if (use_prop_rw) {
-		  getP_dynIRT_rw(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegism, sig2_p, pmu0, psigma0, T, nN, nJ);
+		  getP_dynIRT_rw(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, sig2_p, pmu0, psigma0, T, nN, nJ);
 		} else {
 		  // If no all sig2_p == 0, then use original function:
 		  double pmu = 0.0;
