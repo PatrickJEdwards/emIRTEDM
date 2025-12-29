@@ -19,6 +19,7 @@
 #include "getOnecol_dynIRT.h"
 #include "checkConv_dynIRT.h"
 #include "getP_dynIRT.h"
+#include "getP_dynIRT_rw.h"
 //#include "getP_dynIRT_ar1.h"
 #include "getMS_dynIRT.h"
 #include "getMS_dynIRT_anchored.h"
@@ -45,7 +46,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
                double rho_p,              // AR(1) coefficient in (-1,1). Use 1.0 for random walk.
                arma::mat sig2_p,          // N x 1 innovation variance for propensity per legislator
                arma::mat pmu0,            // N x 1 prior mean for p at first served period (often 0 and large).
-               arma::mat psigma0,         // N x 1 prior var for p at first served period (often 0 and large).
+               arma::mat psigma0,         // N x 1 prior var for p at first served period (often 1).
                unsigned int threads = 0,
                bool verbose = true,
                unsigned int maxit = 2500,
@@ -146,6 +147,19 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
     use_xsign = (arma::accu(arma::abs(sl) > TOL) > 0);  // scalar -> bool
   }
   if (use_xsign) Rcout << "Note: using ideal point sign constraints!\n\n";
+  
+  
+  
+  // ---- decide whether to use random walk in propensity update ----
+  bool use_prop_rw = false;
+  arma::mat p_rw;  // N x 1
+  if (sig2_p.n_rows == nN && sig2_p.n_cols >= 1) {
+    p_rw = sig2_p.col(0);                 // N x 1
+    const double TOL = 1e-12;
+    use_prop_rw = (arma::accu(arma::abs(p_rw) > TOL) > 0);  // scalar -> bool
+  }
+  if (use_prop_rw) Rcout << "Note: using propensity random walk!\n\n";
+  
   
   //// Initial "Current" Containers
   arma::mat curEystar(nN, nJ, arma::fill::zeros);
@@ -342,14 +356,23 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
 	    curEba(j,0) = 2.0*(Ems2 - Em3 - Es3 + Esm2);
 	  }
     
-		
-		// 5) propensity (non-dynamic i.i.d. Normal prior) — unchanged
-		double pmu = 0.0;
-	  double psigma = 1.0;
-		getP_dynIRT(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, pmu, psigma, T, nN, nJ);
+    
+    
+    
+    // 5) propensity (non-dynamic i.i.d. Normal prior) — unchanged
+		if (use_prop_rw) {
+		  getP_dynIRT_rw(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegism, sig2_p, pmu0, psigma0, T, nN, nJ);
+		} else {
+		  // If no all sig2_p == 0, then use original function:
+		  double pmu = 0.0;
+		  double psigma = 1.0;
+		  getP_dynIRT(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, pmu, psigma, T, nN, nJ);
+		}
 		//getP_dynIRT_ar1(curEp, curVp, curEystar, curEa, curEb, curEx, bill_session, startlegis, endlegis, rho_p, sig2_p, pmu0, psigma0, T, nN, nJ);
 	  if (!curEp.is_finite()) Rcpp::stop("Ep contains non-finite values after getP_dynIRT");
 	  
+	
+	
 	
 	
 		// ---- Progress + Convergence (table-style output from new checkConv) ----
