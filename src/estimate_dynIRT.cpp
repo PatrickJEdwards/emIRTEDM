@@ -167,7 +167,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
   // ---- decide whether to use item beta constraints ----
   bool use_beta_sign = false;
   arma::mat b_sign;  // N x 1
-  if (beta_sign.n_rows == nN && beta_sign.n_cols >= 1) {
+  if (beta_sign.n_rows == nJ && beta_sign.n_cols >= 1) {
     b_sign = beta_sign.col(0);                 // N x 1
     const double TOL = 1e-12;
     use_beta_sign = (arma::accu(arma::abs(b_sign) > TOL) > 0);  // scalar -> bool
