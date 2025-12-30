@@ -17,6 +17,7 @@ Rcpp::List estimate_dynIRT(arma::mat m_start,
                     unsigned int T,
                     arma::mat sponsor_index,
                     arma::mat anchor_group,    // J x 1 (0 = singleton; >0 = tied)
+                    arma::mat beta_sign,       // J x 1 (-1 = beta <= 0, 1 = beta >= 0, 0 = beta unconstrained)
                     arma::mat xmu0,
                     arma::mat xsigma0,
                     arma::mat xsign,           // Nx1: legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)

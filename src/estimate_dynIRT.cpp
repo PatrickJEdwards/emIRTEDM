@@ -38,6 +38,7 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
                unsigned int T,
                arma::mat sponsor_index,   // J x 1 (row index of sponsor MP per item)
                arma::mat anchor_group,    // J x 1 (0 = singleton; >0 = tied)
+               arma::mat beta_sign,       // J x 1 (-1 = beta <= 0, 1 = beta >= 0, 0 = beta unconstrained)
                arma::mat xmu0,            // N x 1
                arma::mat xsigma0,         // N x 1
                arma::mat xsign,           // N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
@@ -159,6 +160,19 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
     use_prop_rw = (arma::accu(arma::abs(p_rw) > TOL) > 0);  // scalar -> bool
   }
   if (use_prop_rw) Rcout << "Note: using propensity random walk!\n\n";
+  
+  
+  
+  // ---- decide whether to use item beta constraints ----
+  bool use_beta_sign = false;
+  arma::mat b_sign;  // N x 1
+  if (beta_sign.n_rows == nN && beta_sign.n_cols >= 1) {
+    b_sign = beta_sign.col(0);                 // N x 1
+    const double TOL = 1e-12;
+    use_beta_sign = (arma::accu(arma::abs(b_sign) > TOL) > 0);  // scalar -> bool
+  }
+  if (use_beta_sign) Rcout << "Note: using item beta constraints!\n\n";
+  
   
   
   //// Initial "Current" Containers
@@ -310,24 +324,19 @@ List estimate_dynIRT(arma::mat m_start,   // J x 1 starting m
 	  getEx2x2_dynIRT(curEx2x2, curEx, curVx, legis_by_session, Nlegis_session, T);
 	  
 	  
+	  
 	  // 3) (m,s) item update  — REPLACES getEx2x2/getVb2/getEb2
 	  //    New function will update curEm,curEs and their posterior variances/covariances per item,
 	  //    using: E[y*] - E[p] as the response and (E[x], Var[x]) as regressors, plus the sponsor prior.
-	  if (use_groups) {
-	    getMS_dynIRT_anchored(curEm, curEs, curVm, curVs, curCms, curEystar, curEx, curEp, bill_session, sponsor_index, item_sigma, curEx2x2, startlegis, endlegis, nJ, nN, T, ag, 
-	      true, // prior_use_first_occurrence
-	      40,   // newton_maxit (default: 10)
-	      1e-6, // newton_tol (default: 1e-8)
-	      1e-8  // ridge
-	    );
+	  if (use_groups && use_beta_sign) {
+	    getMS_dynIRT_anchored_sign(curEm, curEs, curVm, curVs, curCms, curEystar, curEx, curEp, bill_session, sponsor_index, item_sigma, curEx2x2, startlegis, endlegis, nJ, nN, T, ag, b_sign, true, 40, 1e-6, 1e-8);
+	  } else if (use_groups && !use_beta_sign) {
+	    getMS_dynIRT_anchored(curEm, curEs, curVm, curVs, curCms, curEystar, curEx, curEp, bill_session, sponsor_index, item_sigma, curEx2x2, startlegis, endlegis, nJ, nN, T, ag, true, 40, 1e-6, 1e-8);
 	  } else {
 	    // If no anchor groups, use original function:
 	    getMS_dynIRT(curEm, curEs, curVm, curVs, curCms, curEystar, curEx, curEp, bill_session, sponsor_index, item_sigma, curEx2x2, startlegis, endlegis, nJ, nN, T);
 	  }
-	  
-	  
 	    
-
 	  // 4) Refresh derived alpha,beta and their moments from updated (m,s)
 	  for(j=0; j<nJ; j++){
 	    double m = curEm(j,0), s = curEs(j,0);

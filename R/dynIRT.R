@@ -33,6 +33,7 @@ dynIRT <- function(.data,
                  .data$T,
                  .data$sponsor_index, # J-length vector of EDM sponsors
                  .data$anchor_group,  # J x 1 (0 = singleton; >0 = tied)
+                 .data$beta_sign,     # J x 1 (-1 = beta <= 0, 1 = beta >= 0, 0 = beta unconstrained)
                  .priors$x.mu0,
                  .priors$x.sigma0,
                  .priors$x.sign,      # N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)

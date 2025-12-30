@@ -14,6 +14,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
                                  SEXP TSEXP,
                                  SEXP sponsor_indexSEXP, // length J, 0-based row index of the sponsor MP for item j
                                  SEXP anchor_groupSEXP,  // J x 1 (0 = singleton; >0 = tied)
+                                 SEXP beta_signSEXP,     // J x 1 (-1 = beta <= 0, 1 = beta >= 0, 0 = beta unconstrained)
                                  SEXP xmu0SEXP, 
                                  SEXP xsigma0SEXP,
                                  SEXP xsignSEXP,         // N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
@@ -45,6 +46,7 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
     Rcpp::traits::input_parameter<int>::type T(TSEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type sponsor_index(sponsor_indexSEXP) ; // length J, 0-based row index of the sponsor MP for item j
     Rcpp::traits::input_parameter<arma::mat>::type anchor_group(anchor_groupSEXP) ;   // J x 1 (0 = singleton; >0 = tied)
+    Rcpp::traits::input_parameter<arma::mat>::type beta_sign(beta_signSEXP) ;         // J x 1 (-1 = beta <= 0, 1 = beta >= 0, 0 = beta unconstrained)
     Rcpp::traits::input_parameter<arma::mat>::type xmu0(xmu0SEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type xsigma0(xsigma0SEXP) ;
     Rcpp::traits::input_parameter<arma::mat>::type xsign(xsignSEXP) ;                 // N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
@@ -72,7 +74,8 @@ RcppExport SEXP dynIRT_estimate(SEXP m_startSEXP,        // item motion 'm' star
                                  T,
                                  sponsor_index,             // length J, 0-based row index of the sponsor MP for item j
                                  anchor_group,              // J x 1 (0 = singleton; >0 = tied)
-                                 xmu0,
+                                 beta_sign,                 // J x 1 (-1 = beta <= 0, 1 = beta >= 0, 0 = beta unconstrained)
+                                 xmu0, 
                                  xsigma0,
                                  xsign,                     // N x 1 legislator sign constraints (left-wing -> non-positive, right-wing -> non-negative, unconstrained)
                                  item_sigma,                // Prior covariance matrix for s_{jt} and m_{jt} (centered on sponsor's x_{it}) 
