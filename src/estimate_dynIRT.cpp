@@ -23,6 +23,7 @@
 //#include "getP_dynIRT_ar1.h"
 #include "getMS_dynIRT.h"
 #include "getMS_dynIRT_anchored.h"
+#include "getMS_dynIRT_anchored_sign.h"
 
 using namespace Rcpp ;
 
