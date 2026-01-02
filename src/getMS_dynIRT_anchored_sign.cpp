@@ -88,9 +88,13 @@ static inline double inv_softplus(double y){
 }
 
 // Map unconstrained u -> constrained d plus first/second derivatives
-// bs = +1 : d =  softplus(u) >= 0
-// bs = -1 : d = -softplus(u) <= 0
-// bs =  0 : d = u (unconstrained)
+// beta = 4d, so:
+//
+// bs =  0 : no constraint          => d = u
+// bs =  1 : beta >=  0  (d >= 0)   => d = 0.00 + softplus(u)
+// bs =  2 : beta >=  1  (d >= .25) => d = 0.25 + softplus(u)
+// bs = -1 : beta <=  0  (d <= 0)   => d = 0.00 - softplus(u)
+// bs = -2 : beta <= -1  (d <=-.25) => d = -0.25 - softplus(u)
 static inline void d_from_u(int bs, double u, double &d, double &d1, double &d2){
   if (bs == 0){
     d  = u;
@@ -98,19 +102,44 @@ static inline void d_from_u(int bs, double u, double &d, double &d1, double &d2)
     d2 = 0.0;
     return;
   }
-  const double sp  = softplus(u);
-  const double sig = sigmoid(u);
-  const double curv = sig * (1.0 - sig); // derivative of sigmoid
+  
+  const double sp   = softplus(u);
+  const double sig  = sigmoid(u);
+  const double curv = sig * (1.0 - sig);
   
   if (bs == 1){
-    d  = sp;
+    const double L = 0.0;
+    d  = L + sp;
     d1 = sig;
     d2 = curv;
-  } else { // bs == -1
-    d  = -sp;
+    return;
+  }
+  if (bs == 2){
+    const double L = 0.25; // = 1/4
+    d  = L + sp;
+    d1 = sig;
+    d2 = curv;
+    return;
+  }
+  if (bs == -1){
+    const double U = 0.0;
+    d  = U - sp;
     d1 = -sig;
     d2 = -curv;
+    return;
   }
+  if (bs == -2){
+    const double U = -0.25; // = -1/4
+    d  = U - sp;
+    d1 = -sig;
+    d2 = -curv;
+    return;
+  }
+  
+  // Should never happen if beta_sign is validated
+  d  = u;
+  d1 = 1.0;
+  d2 = 0.0;
 }
 
 
@@ -161,8 +190,9 @@ void getMS_dynIRT_anchored_sign(
   for (uword j = 0; j < nJ; ++j) {
     const double v = beta_sign(j,0);
     const int sgn = (int)std::llround(v);
-    if (!std::isfinite(v) || std::fabs(v - (double)sgn) > 1e-30 || (sgn != -1 && sgn != 0 && sgn != 1)) {
-      Rcpp::stop("beta_sign[%d]=%f invalid. Must be -1, 0, or 1.", (int)j+1, v);
+    if (!std::isfinite(v) || std::fabs(v - (double)sgn) > 1e-30 ||
+        (sgn != -2 && sgn != -1 && sgn != 0 && sgn != 1 && sgn != 2)) {
+      Rcpp::stop("beta_sign[%d]=%f invalid. Must be -2, -1, 0, 1, or 2.", (int)j+1, v);
     }
   }
   
@@ -406,7 +436,7 @@ void getMS_dynIRT_anchored_sign(
   for (uword j = 0; j < nJ; ++j) {
     if (anchor_group((int)j) > 0) continue;  // was handled in groups
     
-    const int bs = (int)std::llround(beta_sign(j,0)); // -1,0,1
+    const int bs = (int)std::llround(beta_sign(j,0)); // -2,-1,0,1,2
     
     int t = (int)bill_session(j,0);
     if (t < 0 || t >= (int)T) continue;
@@ -437,15 +467,23 @@ void getMS_dynIRT_anchored_sign(
     double c = 0.5 * (m0 + s0);
     double d0 = 0.5 * (m0 - s0);          // equals beta/4 at current point
     
-    double u;                              // unconstrained optimization variable
+    double u;
+    const double EPSU = 1e-20;
+    
     if (bs == 0){
       u = d0;
     } else if (bs == 1){
-      // want d >= 0, initialize u so softplus(u) ≈ max(d0, small)
-      u = inv_softplus(std::max(d0, 1e-20));
-    } else { // bs == -1
-      // want d <= 0, initialize using -softplus(u) ≈ min(d0, -small)
-      u = inv_softplus(std::max(-d0, 1e-20));
+      // d = 0 + softplus(u)  => softplus(u) ~= d0 - 0
+      u = inv_softplus(std::max(d0 - 0.0, EPSU));
+    } else if (bs == 2){
+      // d = 0.25 + softplus(u)  => softplus(u) ~= d0 - 0.25
+      u = inv_softplus(std::max(d0 - 0.25, EPSU));
+    } else if (bs == -1){
+      // d = 0 - softplus(u)  => softplus(u) ~= 0 - d0
+      u = inv_softplus(std::max(0.0 - d0, EPSU));
+    } else { // bs == -2
+      // d = -0.25 - softplus(u)  => softplus(u) ~= (-0.25) - d0
+      u = inv_softplus(std::max(-0.25 - d0, EPSU));
     }
     
     // Newton iterations in v = (c,u)
