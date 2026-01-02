@@ -13,8 +13,8 @@ using arma::mat; using arma::vec; using arma::uword; using arma::ivec; using arm
 //static inline double softplus(double z){ return std::log1p(std::exp(z)); }
 static inline double softplus(double z){
   // stable log(1+exp(z))
-  if (z > 50.0) return z;            // log(1+exp(z)) ~ z
-  if (z < -50.0) return std::exp(z); // log(1+exp(z)) ~ exp(z)
+  if (z > 100.0) return z;            // log(1+exp(z)) ~ z
+  if (z < -100.0) return std::exp(z); // log(1+exp(z)) ~ exp(z)
   return std::log1p(std::exp(z));
 }
 
@@ -45,7 +45,7 @@ static inline double log_diff_exp(double log_b, double log_a){
 // Univariate truncated-Normal moments for truncation to [L,U]
 static inline std::pair<double,double>
   trunc_box_scalar(double mu, double var, double L, double U){
-    const double VAR_FLOOR = 1e-12;
+    const double VAR_FLOOR = 1e-30;
     var = std::max(var, VAR_FLOOR);
     
     if (!(U > L)) {
@@ -81,7 +81,7 @@ static inline std::pair<double,double>
   }
 
 static inline double inv_softplus(double y){
-  const double EPS = 1e-12;
+  const double EPS = 1e-30;
   y = std::max(y, EPS);
   // log(expm1(y)) is stable for small y
   return std::log(std::expm1(y));
@@ -148,7 +148,7 @@ void getMS_dynIRT_anchored_sign(
 ){
   // same hard box / barrier you use in the per-item solver
   const double MS_MIN = -500.0, MS_MAX = 500.0;
-  const double LAMBDA_BAR = 1e-2;
+  const double LAMBDA_BAR = 1e-30;
   
   if (!item_sigma.is_sympd()) Rcpp::stop("item_sigma must be SPD");
   mat Lambda = arma::inv_sympd(item_sigma); // 2x2
@@ -161,7 +161,7 @@ void getMS_dynIRT_anchored_sign(
   for (uword j = 0; j < nJ; ++j) {
     const double v = beta_sign(j,0);
     const int sgn = (int)std::llround(v);
-    if (!std::isfinite(v) || std::fabs(v - (double)sgn) > 1e-8 || (sgn != -1 && sgn != 0 && sgn != 1)) {
+    if (!std::isfinite(v) || std::fabs(v - (double)sgn) > 1e-30 || (sgn != -1 && sgn != 0 && sgn != 1)) {
       Rcpp::stop("beta_sign[%d]=%f invalid. Must be -1, 0, or 1.", (int)j+1, v);
     }
   }
@@ -379,7 +379,7 @@ void getMS_dynIRT_anchored_sign(
     arma::mat Hs = 0.5*(H+H.t());
     double jitter = ridge;
     for (int k=0; k<6 && !Hs.is_sympd(); ++k){ jitter *= 10.0; Hs.diag() += jitter; }
-    //arma::mat Sigma = Hs.is_sympd() ? arma::inv_sympd(Hs) : arma::inv(Hs + 1e-8*arma::eye<mat>(2,2));
+    //arma::mat Sigma = Hs.is_sympd() ? arma::inv_sympd(Hs) : arma::inv(Hs + 1e-12*arma::eye<mat>(2,2));
     arma::mat Sigma;
     if (Hs.is_sympd()) {
       Sigma = arma::inv_sympd(Hs);
@@ -442,10 +442,10 @@ void getMS_dynIRT_anchored_sign(
       u = d0;
     } else if (bs == 1){
       // want d >= 0, initialize u so softplus(u) ≈ max(d0, small)
-      u = inv_softplus(std::max(d0, 1e-8));
+      u = inv_softplus(std::max(d0, 1e-20));
     } else { // bs == -1
       // want d <= 0, initialize using -softplus(u) ≈ min(d0, -small)
-      u = inv_softplus(std::max(-d0, 1e-8));
+      u = inv_softplus(std::max(-d0, 1e-20));
     }
     
     // Newton iterations in v = (c,u)
@@ -598,7 +598,7 @@ void getMS_dynIRT_anchored_sign(
     d_from_u(bs, u, d, d1, d2);
     
     double da = std::fabs(d);
-    const double dmax = 0.5*(MS_MAX - MS_MIN) - 1e-8;
+    const double dmax = 0.5*(MS_MAX - MS_MIN) - 1e-12;
     if (da > dmax) {
       d = (d >= 0.0 ? 1.0 : -1.0) * dmax;
       da = dmax;
