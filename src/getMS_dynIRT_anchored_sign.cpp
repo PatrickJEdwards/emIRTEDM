@@ -115,7 +115,8 @@ static inline void d_from_u(int bs, double u, double &d, double &d1, double &d2)
     return;
   }
   if (bs == 2){
-    const double L = 0.25; // = 1/4
+    const double L = 0.125; // = 0.5/4; for β >= 0.5
+    //const double L = 0.25; // = 1/4; for β >= 1
     d  = L + sp;
     d1 = sig;
     d2 = curv;
@@ -129,7 +130,8 @@ static inline void d_from_u(int bs, double u, double &d, double &d1, double &d2)
     return;
   }
   if (bs == -2){
-    const double U = -0.25; // = -1/4
+    const double U = -0.125; // = -0.5/4; for β <= -0.5
+    //const double U = -0.25; // = -1/4; for β <= -1
     d  = U - sp;
     d1 = -sig;
     d2 = -curv;
@@ -477,13 +479,15 @@ void getMS_dynIRT_anchored_sign(
       u = inv_softplus(std::max(d0 - 0.0, EPSU));
     } else if (bs == 2){
       // d = 0.25 + softplus(u)  => softplus(u) ~= d0 - 0.25
-      u = inv_softplus(std::max(d0 - 0.25, EPSU));
+      u = inv_softplus(std::max(d0 - 0.125, EPSU));     // For β >= 0.5
+      //u = inv_softplus(std::max(d0 - 0.25, EPSU));     // For β >= 1
     } else if (bs == -1){
       // d = 0 - softplus(u)  => softplus(u) ~= 0 - d0
       u = inv_softplus(std::max(0.0 - d0, EPSU));
     } else { // bs == -2
       // d = -0.25 - softplus(u)  => softplus(u) ~= (-0.25) - d0
-      u = inv_softplus(std::max(-0.25 - d0, EPSU));
+      u = inv_softplus(std::max(-0.125 - d0, EPSU));     // For β <= -0.5
+      // u = inv_softplus(std::max(-0.25 - d0, EPSU));     // For β <= -1
     }
     
     // Newton iterations in v = (c,u)
